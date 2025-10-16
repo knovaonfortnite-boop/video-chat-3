@@ -1,23 +1,131 @@
-<script>
-  const iframe = document.getElementById('videoChatIframe');
-  const resizeHandle = document.getElementById('resizeHandle');
-  let isResizing = false;
-
-  resizeHandle.addEventListener('mousedown', (e) => {
-    isResizing = true;
-    document.body.style.cursor = 'ns-resize';
-    document.addEventListener('mousemove', handleResize);
-    document.addEventListener('mouseup', () => {
-      isResizing = false;
-      document.body.style.cursor = 'default';
-      document.removeEventListener('mousemove', handleResize);
-    });
-  });
-
-  function handleResize(e) {
-    if (isResizing) {
-      const newHeight = window.innerHeight - e.clientY - 20; // Adjust for margins
-      iframe.style.height = `${newHeight}px`;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Chat</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+      min-height: 100vh;
     }
-  }
-</script>
+
+    .container {
+      width: 100%;
+      max-width: 1400px;
+    }
+
+    .video-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .video-wrapper {
+      position: relative;
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(255, 255, 255, 0.1);
+      aspect-ratio: 16/9;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .video-label {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.6);
+      color: white;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s ease;
+      color: white;
+    }
+
+    #startBtn { background: #10b981; }
+    #startBtn:hover { background: #059669; }
+
+    #joinBtn { background: #3b82f6; }
+    #joinBtn:hover { background: #2563eb; }
+
+    #leaveBtn { background: #ef4444; }
+    #leaveBtn:hover { background: #dc2626; }
+
+    #toggleCamBtn { background: #f59e0b; }
+    #toggleCamBtn:hover { background: #d97706; }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .status {
+      color: white;
+      text-align: center;
+      padding: 10px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    @media(max-width:768px) {
+      .video-container {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="video-container" id="videoContainer">
+      <div class="video-wrapper" id="localWrapper">
+        <video id="localVideo" autoplay muted playsinline></video>
+        <div class="video-label" id="localLabel">You</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="startBtn">Start Camera</button>
+      <button id="joinBtn" disabled>Join Call</button>
+      <button id="leaveBtn" disabled>Leave Call</button>
+      <button id="toggleCamBtn" disabled>Turn Camera Off</button>
+    </div>
+
+    <div class="status" id="status">Click "Start Camera" to begin</div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
