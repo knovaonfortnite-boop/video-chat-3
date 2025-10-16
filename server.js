@@ -1,132 +1,67 @@
-const express = require('express');
-const path = require('path');
-const http = require('http');
-const { WebSocketServer } = require('ws');
-const { randomUUID } = require('crypto');
+const WebSocket = require('ws');
+const { v4: uuidv4 } = require('uuid');
 
-const app = express();
+const PORT = process.env.PORT || 8080;
+const wss = new WebSocket.Server({ port: PORT });
 
-// Serve static files
-app.use(express.static(path.join(__dirname, 'public')));
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/index.html'));
-});
+const users = new Map(); // id -> { ws, username }
 
-// Create HTTP server and attach WebSocket
-const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
-
-// Keep track of all connected clients
-// { id: { ws, name, room } }
-const clients = new Map();
+function broadcastUserList() {
+  const list = Array.from(users.entries()).map(([id, { username }]) => ({ id, username }));
+  users.forEach(({ ws }) => {
+    ws.send(JSON.stringify({ type: 'user-list', users: list }));
+  });
+}
 
 wss.on('connection', (ws) => {
-  const id = randomUUID();
-  clients.set(id, { ws, name: null, room: null });
+  const id = uuidv4();
+  users.set(id, { ws, username: `User-${id.substring(0,4)}` });
 
-  // Send welcome message with ID
   ws.send(JSON.stringify({ type: 'welcome', id }));
 
   ws.on('message', (message) => {
     try {
-      const data = JSON.parse(message);
+      const msg = JSON.parse(message);
 
-      switch (data.type) {
-        case 'set-name':
-          clients.get(id).name = data.name;
+      switch(msg.type) {
+
+        case 'set-username':
+          if(users.has(id)) users.get(id).username = msg.username;
+          broadcastUserList();
           break;
 
         case 'join':
-          // Assign user to a room (default room if none specified)
-          clients.get(id).room = data.room || 'main';
-          sendExistingParticipants(id);
+        case 'leave':
+          broadcastUserList();
           break;
 
+        case 'call':
         case 'offer':
         case 'answer':
         case 'ice-candidate':
-          // Forward to the target peer
-          const target = clients.get(data.to);
-          if (target) {
-            target.ws.send(JSON.stringify({
-              type: data.type,
+          // forward to target
+          if(users.has(msg.to)){
+            users.get(msg.to).ws.send(JSON.stringify({
+              ...msg,
               from: id,
-              ...data
+              fromUsername: users.get(id).username
             }));
           }
           break;
 
-        case 'leave':
-          handleLeave(id);
-          break;
-
-        case 'direct-call':
-          // For private calls
-          const targetUser = clients.get(data.to);
-          if (targetUser) {
-            targetUser.ws.send(JSON.stringify({
-              type: 'direct-call',
-              from: id,
-              name: clients.get(id).name
-            }));
-          }
-          break;
       }
-    } catch (err) {
+    } catch(err) {
       console.error('Error parsing message:', err);
     }
   });
 
   ws.on('close', () => {
-    handleLeave(id);
-    clients.delete(id);
+    users.delete(id);
+    broadcastUserList();
+    users.forEach(({ ws }) => {
+      ws.send(JSON.stringify({ type: 'participant-left', id }));
+    });
   });
 });
 
-function sendExistingParticipants(id) {
-  const client = clients.get(id);
-  if (!client) return;
-  const room = client.room;
-
-  const participants = [];
-  for (const [otherId, other] of clients.entries()) {
-    if (otherId !== id && other.room === room) {
-      participants.push({ id: otherId, name: other.name });
-      // Notify existing participant about the new participant
-      other.ws.send(JSON.stringify({
-        type: 'new-participant',
-        id,
-        name: client.name
-      }));
-    }
-  }
-
-  // Send existing participants list to the joining client
-  client.ws.send(JSON.stringify({
-    type: 'existing-participants',
-    participants
-  }));
-}
-
-function handleLeave(id) {
-  const client = clients.get(id);
-  if (!client) return;
-  const room = client.room;
-
-  // Notify others in the same room
-  for (const [otherId, other] of clients.entries()) {
-    if (otherId !== id && other.room === room) {
-      other.ws.send(JSON.stringify({
-        type: 'participant-left',
-        id
-      }));
-    }
-  }
-
-  client.room = null;
-}
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+console.log(`WebSocket server running on ws://localhost:${PORT}`);
