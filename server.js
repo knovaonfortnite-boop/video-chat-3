@@ -1,53 +1,60 @@
-const express = require('express');
-const http = require('http');
-const WebSocket = require('ws');
-const path = require('path');
+const videoContainer = document.getElementById('videoContainer');
+const localVideo = document.getElementById('localVideo');
+const localLabel = document.getElementById('localLabel');
+const localWrapper = document.getElementById('localWrapper');
 
-const app = express();
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const startBtn = document.getElementById('startBtn');
+const joinBtn = document.getElementById('joinBtn');
+const leaveBtn = document.getElementById('leaveBtn');
+const toggleCamBtn = document.getElementById('toggleCamBtn');
+const status = document.getElementById('status');
 
-const clients = new Map();
+let localStream;
+let ws;
+let myId;
+let camOn = true;
 
-app.use(express.static(path.join(__dirname, 'public')));
+function updateStatus(msg) { status.textContent = msg; }
 
-wss.on('connection', (ws) => {
-  const id = Math.random().toString(36).substring(2, 9);
-  clients.set(ws, id);
+async function startCamera() {
+  const username = prompt("Enter your name:");
+  if (!username) return alert("You must enter a name!");
 
-  ws.send(JSON.stringify({ type: 'welcome', id }));
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localVideo.srcObject = localStream;
+    localLabel.textContent = username;
+    startBtn.disabled = true;
+    toggleCamBtn.disabled = false;
+    updateStatus("Camera started - ready to join call");
 
-  const others = [...clients.values()].filter(v => v !== id);
-  ws.send(JSON.stringify({ type: 'existing-participants', participants: others }));
+    // Setup WebSocket
+    ws = new WebSocket('wss://video-chat-3-4.onrender.com'); // your Render URL
 
-  for (const [client, clientId] of clients.entries()) {
-    if (client !== ws && client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify({ type: 'new-participant', id }));
-    }
+    ws.onopen = () => updateStatus("Connected to server");
+    ws.onclose = () => updateStatus("Disconnected from server");
+    ws.onerror = () => updateStatus("WebSocket error");
+  } catch(err) {
+    console.error(err);
+    updateStatus("Error accessing camera/microphone");
+  }
+}
+
+toggleCamBtn.addEventListener('click', () => {
+  camOn = !camOn;
+  if (localStream && localStream.getVideoTracks().length) {
+    localStream.getVideoTracks()[0].enabled = camOn;
   }
 
-  ws.on('message', (message) => {
-    try {
-      const data = JSON.parse(message);
-      const target = [...clients.entries()].find(([client, clientId]) => clientId === data.to);
+  toggleCamBtn.textContent = camOn ? "Turn Camera Off" : "Turn Camera On";
 
-      if (target && target[0].readyState === WebSocket.OPEN) {
-        target[0].send(JSON.stringify({ ...data, from: id }));
-      }
-    } catch (err) {
-      console.error('Error handling message:', err);
-    }
-  });
-
-  ws.on('close', () => {
-    clients.delete(ws);
-    for (const [client, clientId] of clients.entries()) {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify({ type: 'participant-left', id }));
-      }
-    }
-  });
+  if (!camOn) {
+    localVideo.style.display = 'none';
+    localWrapper.style.background = '#'+Math.floor(Math.random()*16777215).toString(16);
+  } else {
+    localVideo.style.display = 'block';
+    localWrapper.style.background = '#000';
+  }
 });
 
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+startBtn.addEventListener('click', startCamera);
