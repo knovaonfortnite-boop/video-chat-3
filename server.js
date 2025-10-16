@@ -11,7 +11,6 @@ const status = document.getElementById('status');
 
 let localStream;
 let ws;
-let myId;
 let camOn = true;
 
 function updateStatus(msg) { status.textContent = msg; }
@@ -21,25 +20,23 @@ async function startCamera() {
   if (!username) return alert("You must enter a name!");
 
   try {
+    // Request camera and mic
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     localVideo.srcObject = localStream;
     localLabel.textContent = username;
+
     startBtn.disabled = true;
     toggleCamBtn.disabled = false;
-    updateStatus("Camera started - ready to join call");
+    joinBtn.disabled = false;
 
-    // Setup WebSocket
-    ws = new WebSocket('wss://video-chat-3-4.onrender.com'); // your Render URL
-
-    ws.onopen = () => updateStatus("Connected to server");
-    ws.onclose = () => updateStatus("Disconnected from server");
-    ws.onerror = () => updateStatus("WebSocket error");
-  } catch(err) {
+    updateStatus("Camera started! You can now join the call.");
+  } catch (err) {
     console.error(err);
-    updateStatus("Error accessing camera/microphone");
+    updateStatus("Error accessing camera/microphone. Make sure your browser allows it and you're on HTTPS.");
   }
 }
 
+// Camera toggle
 toggleCamBtn.addEventListener('click', () => {
   camOn = !camOn;
   if (localStream && localStream.getVideoTracks().length) {
@@ -50,11 +47,33 @@ toggleCamBtn.addEventListener('click', () => {
 
   if (!camOn) {
     localVideo.style.display = 'none';
-    localWrapper.style.background = '#'+Math.floor(Math.random()*16777215).toString(16);
+    localWrapper.style.background = '#' + Math.floor(Math.random()*16777215).toString(16);
   } else {
     localVideo.style.display = 'block';
     localWrapper.style.background = '#000';
   }
+});
+
+// Join call — simple WebSocket example (replace URL with your Render WebSocket server)
+joinBtn.addEventListener('click', () => {
+  if (!localStream) return alert("Start your camera first!");
+  joinBtn.disabled = true;
+  leaveBtn.disabled = false;
+
+  ws = new WebSocket('wss://video-chat-3-4.onrender.com'); // <-- make sure this is correct
+
+  ws.onopen = () => updateStatus("Connected to server!");
+  ws.onclose = () => updateStatus("Disconnected from server");
+  ws.onerror = () => updateStatus("WebSocket error");
+
+  updateStatus("Joining call...");
+});
+
+leaveBtn.addEventListener('click', () => {
+  if (ws) ws.close();
+  joinBtn.disabled = false;
+  leaveBtn.disabled = true;
+  updateStatus("Left call");
 });
 
 startBtn.addEventListener('click', startCamera);
