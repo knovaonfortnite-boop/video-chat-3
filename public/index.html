@@ -1,119 +1,23 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Video Chat</title>
-<style>
-body {margin:0;background:#000;color:#fff;font-family:sans-serif;display:flex;height:100vh;}
-#sidebar {width:250px;background:#111;padding:10px;overflow-y:auto;}
-#sidebar h2 {margin-top:0;}
-#onlineUsers button {width:100%;margin:3px 0;padding:8px;border:none;border-radius:4px;background:#222;color:#fff;cursor:pointer;}
-#main {flex:1;display:flex;flex-direction:column;align-items:center;padding:10px;}
-.video-container {display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px;width:100%;}
-.video-wrapper {position:relative;padding-top:56.25%;background:#222;border-radius:8px;overflow:hidden;}
-video {position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;}
-.video-label {position:absolute;bottom:5px;left:5px;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;font-size:12px;}
-.controls {margin:10px 0;display:flex;gap:10px;flex-wrap:wrap;justify-content:center;}
-button {padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-weight:600;}
-#startBtn {background:#10b981;} #toggleCamBtn {background:#f59e0b;} #leaveBtn {background:#ef4444;}
-.status {margin-top:10px;text-align:center;background:rgba(255,255,255,0.1);padding:6px 10px;border-radius:6px;}
-</style>
-</head>
-<body>
-<div id="sidebar">
-  <h2>Online</h2>
-  <div id="onlineUsers"></div>
-</div>
-<div id="main">
-  <div class="video-container" id="videoContainer">
-    <div class="video-wrapper" id="localWrapper">
-      <video id="localVideo" autoplay muted playsinline></video>
-      <div class="video-label" id="localLabel">You</div>
-    </div>
-  </div>
-  <div class="controls">
-    <button id="startBtn">Start Camera</button>
-    <button id="toggleCamBtn" disabled>Turn Camera Off</button>
-    <button id="leaveBtn" disabled>Leave Call</button>
-  </div>
-  <div class="status" id="status">Click "Start Camera" to begin</div>
-</div>
-
 <script>
-let ws, myId, localStream, camOn = true;
-const localVideo = document.getElementById("localVideo");
-const localWrapper = document.getElementById("localWrapper");
-const localLabel = document.getElementById("localLabel");
-const onlineUsers = document.getElementById("onlineUsers");
-const startBtn = document.getElementById("startBtn");
-const toggleCamBtn = document.getElementById("toggleCamBtn");
-const leaveBtn = document.getElementById("leaveBtn");
-const status = document.getElementById("status");
+  const iframe = document.getElementById('videoChatIframe');
+  const resizeHandle = document.getElementById('resizeHandle');
+  let isResizing = false;
 
-function updateStatus(msg){ status.textContent = msg; }
+  resizeHandle.addEventListener('mousedown', (e) => {
+    isResizing = true;
+    document.body.style.cursor = 'ns-resize';
+    document.addEventListener('mousemove', handleResize);
+    document.addEventListener('mouseup', () => {
+      isResizing = false;
+      document.body.style.cursor = 'default';
+      document.removeEventListener('mousemove', handleResize);
+    });
+  });
 
-startBtn.onclick = async () => {
-  const username = prompt("Enter your name:");
-  if(!username) return;
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    localVideo.srcObject = localStream;
-    localLabel.textContent = username;
-    startBtn.disabled = true;
-    toggleCamBtn.disabled = false;
-    leaveBtn.disabled = false;
-    connectWebSocket(username);
-    updateStatus("Camera started.");
-  } catch (err) {
-    console.error(err);
-    updateStatus("Camera failed to start.");
-  }
-};
-
-toggleCamBtn.onclick = () => {
-  camOn = !camOn;
-  localStream.getVideoTracks()[0].enabled = camOn;
-  toggleCamBtn.textContent = camOn ? "Turn Camera Off" : "Turn Camera On";
-  if (!camOn) {
-    localVideo.style.display = "none";
-    localWrapper.style.background = "#" + Math.floor(Math.random()*16777215).toString(16);
-  } else {
-    localVideo.style.display = "block";
-    localWrapper.style.background = "#222";
-  }
-};
-
-leaveBtn.onclick = () => {
-  ws?.close();
-  updateStatus("Disconnected.");
-  startBtn.disabled = false;
-  toggleCamBtn.disabled = true;
-  leaveBtn.disabled = true;
-};
-
-function connectWebSocket(username) {
-  ws = new WebSocket("wss://YOUR_RENDER_URL.onrender.com"); // change this!
-  ws.onopen = () => {
-    updateStatus("Connected to server.");
-    ws.send(JSON.stringify({ type: "set-username", username }));
-  };
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if (data.type === "welcome") myId = data.id;
-    if (data.type === "online-users") {
-      onlineUsers.innerHTML = "";
-      data.users.forEach(u => {
-        if (u.id === myId) return;
-        const btn = document.createElement("button");
-        btn.textContent = u.username;
-        btn.onclick = () => alert(`You would call ${u.username} (coming soon!)`);
-        onlineUsers.appendChild(btn);
-      });
+  function handleResize(e) {
+    if (isResizing) {
+      const newHeight = window.innerHeight - e.clientY - 20; // Adjust for margins
+      iframe.style.height = `${newHeight}px`;
     }
-  };
-  ws.onclose = () => updateStatus("Disconnected from server.");
-}
+  }
 </script>
-</body>
-</html>
