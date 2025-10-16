@@ -1,15 +1,1 @@
-{
-  "name": "mini-facetime-chat",
-  "version": "1.0.0",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "bcryptjs": "^3.0.2",
-    "body-parser": "^2.2.0",
-    "express": "^4.21.2",
-    "express-session": "^1.18.2",
-    "ws": "^8.18.3"
-  }
-}
+"scripts": { "start": "node server.js" }
