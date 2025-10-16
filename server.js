@@ -1,71 +1,66 @@
 // server.js
+const express = require('express');
+const http = require('http');
 const WebSocket = require('ws');
-const { v4: uuidv4 } = require('uuid');
+const path = require('path');
 
-const wss = new WebSocket.Server({ port: process.env.PORT || 3000 });
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-const participants = new Map(); // id -> { ws, name }
+// Serve your static files (HTML/CSS/JS)
+app.use(express.static(path.join(__dirname, 'public')));
+
+const server = http.createServer(app);
+
+// WebSocket server
+const wss = new WebSocket.Server({ server });
+
+const participants = new Map(); // id -> ws
+
+function broadcast(message, exceptId = null) {
+  for (const [id, ws] of participants.entries()) {
+    if (id !== exceptId && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(message));
+    }
+  }
+}
 
 wss.on('connection', (ws) => {
-  const id = uuidv4();
-  participants.set(id, { ws, name: null });
+  const id = Math.random().toString(36).substring(2, 10);
+  participants.set(id, ws);
 
-  // Send welcome with your ID
-  ws.send(JSON.stringify({ type: 'welcome', id }));
+  // Send welcome & existing participants
+  ws.send(JSON.stringify({ type: 'welcome', id, participants: Array.from(participants.keys()).filter(pid => pid !== id) }));
 
-  // Send list of existing participants
-  const existing = [...participants.keys()].filter(pid => pid !== id);
-  if (existing.length) {
-    ws.send(JSON.stringify({ type: 'existing-participants', participants: existing }));
-  }
+  broadcast({ type: 'new-participant', id }, id);
 
-  ws.on('message', (message) => {
+  ws.on('message', (msg) => {
+    let message;
     try {
-      const msg = JSON.parse(message);
-      const sender = participants.get(id);
+      message = JSON.parse(msg);
+    } catch {
+      return;
+    }
 
-      switch (msg.type) {
-        case 'join':
-          sender.name = msg.name || `Participant ${id.substring(0, 4)}`;
-          broadcastExcept(id, { type: 'new-participant', id });
-          break;
+    const { type, to, offer, answer, candidate } = message;
 
-        case 'leave':
-          participants.delete(id);
-          broadcastExcept(id, { type: 'participant-left', id });
-          break;
-
-        case 'offer':
-        case 'answer':
-        case 'ice-candidate':
-          if (msg.to && participants.has(msg.to)) {
-            participants.get(msg.to).ws.send(JSON.stringify({ ...msg, from: id }));
-          }
-          break;
-
-        case 'private-message':
-          if (msg.to && participants.has(msg.to)) {
-            participants.get(msg.to).ws.send(JSON.stringify({ type: 'private-message', from: id, message: msg.message }));
-          }
-          break;
-      }
-    } catch (err) {
-      console.error('Error parsing message:', err);
+    if (type === 'offer' && participants.has(to)) {
+      participants.get(to).send(JSON.stringify({ type: 'offer', from: id, offer }));
+    } else if (type === 'answer' && participants.has(to)) {
+      participants.get(to).send(JSON.stringify({ type: 'answer', from: id, answer }));
+    } else if (type === 'ice-candidate' && participants.has(to)) {
+      participants.get(to).send(JSON.stringify({ type: 'ice-candidate', from: id, candidate }));
+    } else if (type === 'leave') {
+      broadcast({ type: 'participant-left', id }, id);
     }
   });
 
   ws.on('close', () => {
     participants.delete(id);
-    broadcastExcept(id, { type: 'participant-left', id });
+    broadcast({ type: 'participant-left', id }, id);
   });
 });
 
-function broadcastExcept(senderId, msg) {
-  participants.forEach((p, pid) => {
-    if (pid !== senderId) {
-      p.ws.send(JSON.stringify(msg));
-    }
-  });
-}
-
-console.log('WebSocket server running on port', process.env.PORT || 3000);
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
