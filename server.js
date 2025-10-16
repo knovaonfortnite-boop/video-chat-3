@@ -2,65 +2,56 @@
 const WebSocket = require('ws');
 const http = require('http');
 
-// Optional: simple HTTP server to keep Render happy
-const server = http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end('Video chat server running');
-});
-
+const server = http.createServer();
 const wss = new WebSocket.Server({ server });
 
-let clients = new Map();
+const clients = new Map(); // id -> { ws, name }
 
-wss.on('connection', (ws) => {
-  // Generate a random client ID
-  const id = Math.random().toString(36).substr(2, 9);
-  clients.set(id, ws);
-
-  // Send welcome message with their ID and list of other users
-  const otherUsers = Array.from(clients.keys()).filter(uid => uid !== id);
-  ws.send(JSON.stringify({ type: 'welcome', id, participants: otherUsers }));
-
-  // Notify others that a new user joined
-  for (const [uid, client] of clients.entries()) {
-    if (uid !== id) {
-      client.send(JSON.stringify({ type: 'new-participant', id }));
+function broadcast(msg, exceptId=null) {
+  const data = JSON.stringify(msg);
+  for (const [id, client] of clients) {
+    if (id !== exceptId && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(data);
     }
   }
+}
 
-  ws.on('message', (msg) => {
-    try {
-      const data = JSON.parse(msg);
+wss.on('connection', ws => {
+  const id = Math.random().toString(36).substr(2, 9);
+  let username = 'Anonymous';
+  clients.set(id, { ws, name: username });
 
-      switch (data.type) {
-        case 'join':
-        case 'leave':
-        case 'offer':
-        case 'answer':
-        case 'ice-candidate':
-        case 'private-message':
-          // Forward to the intended recipient
-          if (data.to && clients.has(data.to)) {
-            clients.get(data.to).send(JSON.stringify(data));
-          }
-          break;
-      }
-    } catch (err) {
-      console.error('Invalid message', err);
+  ws.send(JSON.stringify({ type: 'welcome', id }));
+
+  ws.on('message', msg => {
+    let message;
+    try { message = JSON.parse(msg); } catch(e){ return; }
+
+    switch(message.type){
+      case 'join':
+        username = message.name || 'Anonymous';
+        clients.get(id).name = username;
+        // notify others
+        broadcast({ type: 'new-participant', id, name: username }, id);
+        // send current participants to this client
+        ws.send(JSON.stringify({ type: 'existing-participants', participants: Array.from(clients.keys()).filter(cid => cid !== id) }));
+        break;
+      case 'offer':
+      case 'answer':
+      case 'ice-candidate':
+        const target = clients.get(message.to);
+        if(target && target.ws.readyState === WebSocket.OPEN){
+          target.ws.send(JSON.stringify({...message, from:id}));
+        }
+        break;
     }
   });
 
   ws.on('close', () => {
     clients.delete(id);
-    // Notify everyone that this user left
-    for (const client of clients.values()) {
-      client.send(JSON.stringify({ type: 'participant-left', id }));
-    }
+    broadcast({ type: 'user-left', id });
   });
 });
 
-// Listen on the port Render provides
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Video chat server running on port ${PORT}`));
