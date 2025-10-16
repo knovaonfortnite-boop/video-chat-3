@@ -1,51 +1,53 @@
+const express = require('express');
+const http = require('http');
 const WebSocket = require('ws');
+const path = require('path');
 
-const PORT = process.env.PORT || 8080;
-const wss = new WebSocket.Server({ port: PORT });
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
-let clients = new Map(); // { id: { ws, username } }
+const clients = new Map();
 
-function broadcastUsers() {
-  const userList = Array.from(clients).map(([id, c]) => ({ id, username: c.username }));
-  const payload = JSON.stringify({ type: 'online-users', users: userList });
-  clients.forEach(c => c.ws.send(payload));
-}
+app.use(express.static(path.join(__dirname, 'public')));
 
 wss.on('connection', (ws) => {
-  const id = Date.now().toString(); // simple unique id
-  clients.set(id, { ws, username: null });
+  const id = Math.random().toString(36).substring(2, 9);
+  clients.set(ws, id);
 
   ws.send(JSON.stringify({ type: 'welcome', id }));
 
+  const others = [...clients.values()].filter(v => v !== id);
+  ws.send(JSON.stringify({ type: 'existing-participants', participants: others }));
+
+  for (const [client, clientId] of clients.entries()) {
+    if (client !== ws && client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify({ type: 'new-participant', id }));
+    }
+  }
+
   ws.on('message', (message) => {
-    const data = JSON.parse(message);
+    try {
+      const data = JSON.parse(message);
+      const target = [...clients.entries()].find(([client, clientId]) => clientId === data.to);
 
-    switch (data.type) {
-      case 'set-username':
-        clients.get(id).username = data.username;
-        broadcastUsers();
-        break;
-
-      case 'offer':
-      case 'answer':
-      case 'ice-candidate':
-        if (clients.has(data.to)) {
-          clients.get(data.to).ws.send(JSON.stringify({ ...data, from: id }));
-        }
-        break;
-
-      case 'private-call':
-        if (clients.has(data.to)) {
-          clients.get(data.to).ws.send(JSON.stringify({ type: 'private-call', from: id }));
-        }
-        break;
+      if (target && target[0].readyState === WebSocket.OPEN) {
+        target[0].send(JSON.stringify({ ...data, from: id }));
+      }
+    } catch (err) {
+      console.error('Error handling message:', err);
     }
   });
 
   ws.on('close', () => {
-    clients.delete(id);
-    broadcastUsers();
+    clients.delete(ws);
+    for (const [client, clientId] of clients.entries()) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({ type: 'participant-left', id }));
+      }
+    }
   });
 });
 
-console.log(`Video chat server running on port ${PORT}`);
+const PORT = process.env.PORT || 10000;
+server.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
