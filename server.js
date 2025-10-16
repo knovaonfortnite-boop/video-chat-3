@@ -1,74 +1,75 @@
-const express = require('express');
 const WebSocket = require('ws');
-const { v4: uuidv4 } = require('uuid');
-const path = require('path');
 
-const PORT = process.env.PORT || 3000;
-const app = express();
-app.use(express.static(path.join(__dirname, 'public')));
+const wss = new WebSocket.Server({ port: process.env.PORT || 8080 });
+console.log('Server started on port', process.env.PORT || 8080);
 
-const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-const wss = new WebSocket.Server({ server });
+const clients = new Map(); // maps client -> {id, name}
 
-const clients = new Map(); // clientId -> { ws, username }
-
-function broadcast(message, excludeId = null) {
-  for (const [id, client] of clients) {
-    if (id !== excludeId && client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(JSON.stringify(message));
+function broadcast(message, except = null) {
+  const data = JSON.stringify(message);
+  for (const [ws] of clients) {
+    if (ws !== except && ws.readyState === WebSocket.OPEN) {
+      ws.send(data);
     }
   }
 }
 
+function send(ws, message) {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(message));
+  }
+}
+
 wss.on('connection', (ws) => {
-  const clientId = uuidv4();
-  let username = "";
+  const id = Math.random().toString(36).substr(2, 9);
+  clients.set(ws, { id, name: null });
+  send(ws, { type: 'welcome', id });
 
   ws.on('message', (msg) => {
     try {
       const data = JSON.parse(msg);
 
       switch (data.type) {
-        case 'set-username':
-          username = data.username;
-          clients.set(clientId, { ws, username });
-          ws.send(JSON.stringify({ type: 'welcome', id: clientId }));
-          ws.send(JSON.stringify({
-            type: 'existing-participants',
-            participants: [...clients.entries()]
-              .filter(([id]) => id !== clientId)
-              .map(([id, c]) => ({ id, username: c.username }))
-          }));
-          broadcast({ type: 'new-participant', id: clientId, username }, clientId);
-          break;
+        case 'join':
+          // save username if provided
+          if (data.name) clients.get(ws).name = data.name;
 
-        case 'offer':
-        case 'answer':
-        case 'ice-candidate':
-        case 'text':
-          if (data.to) {
-            const target = clients.get(data.to);
-            if (target && target.ws.readyState === WebSocket.OPEN) {
-              target.ws.send(JSON.stringify({ ...data, from: clientId, username }));
-            }
-          } else if (data.type === 'text') {
-            broadcast({ ...data, from: clientId, username }, clientId);
-          }
+          // tell this client who else is online
+          const participants = Array.from(clients.values())
+            .filter(c => c.id !== id && c.name)
+            .map(c => ({ id: c.id, name: c.name }));
+          send(ws, { type: 'existing-participants', participants });
+
+          // tell everyone else a new participant joined
+          broadcast({ type: 'new-participant', id, name: clients.get(ws).name }, ws);
           break;
 
         case 'leave':
           ws.close();
           break;
+
+        case 'offer':
+        case 'answer':
+        case 'ice-candidate':
+          const target = Array.from(clients.keys()).find(client => clients.get(client).id === data.to);
+          if (target) send(target, data);
+          break;
+
+        case 'private-message':
+          const recipient = Array.from(clients.keys()).find(client => clients.get(client).id === data.to);
+          if (recipient) send(recipient, data);
+          break;
       }
-    } catch (e) {
-      console.error('WS message error:', e);
+    } catch (err) {
+      console.error('Error processing message:', err);
     }
   });
 
   ws.on('close', () => {
-    clients.delete(clientId);
-    broadcast({ type: 'participant-left', id: clientId });
+    const info = clients.get(ws);
+    clients.delete(ws);
+    broadcast({ type: 'participant-left', id: info.id });
   });
 
-  ws.on('error', (err) => console.error(err));
+  ws.on('error', (err) => console.error('WebSocket error:', err));
 });
