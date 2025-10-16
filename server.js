@@ -1,147 +1,132 @@
 const express = require('express');
+const path = require('path');
 const http = require('http');
 const { WebSocketServer } = require('ws');
-const path = require('path');
+const { randomUUID } = require('crypto');
 
 const app = express();
-const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
 
+// Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/index.html'));
 });
 
-// Map of clientId -> { ws, name }
+// Create HTTP server and attach WebSocket
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
+
+// Keep track of all connected clients
+// { id: { ws, name, room } }
 const clients = new Map();
 
-function broadcastUserList() {
-  const list = [];
-  for (const [id, info] of clients.entries()) {
-    list.push({ id, name: info.name || 'Anonymous' });
-  }
-  const msg = JSON.stringify({ type: 'user-list', users: list });
-  for (const [, info] of clients.entries()) {
-    if (info.ws.readyState === info.ws.OPEN) info.ws.send(msg);
-  }
-}
-
 wss.on('connection', (ws) => {
-  const id = Math.random().toString(36).substr(2, 9);
-  clients.set(id, { ws, name: null });
+  const id = randomUUID();
+  clients.set(id, { ws, name: null, room: null });
 
-  // welcome with id
+  // Send welcome message with ID
   ws.send(JSON.stringify({ type: 'welcome', id }));
 
-  // whenever someone connects, send current list
-  broadcastUserList();
-
-  ws.on('message', (raw) => {
-    let data;
+  ws.on('message', (message) => {
     try {
-      data = JSON.parse(raw);
-    } catch (e) {
-      console.error('Invalid JSON', e);
-      return;
-    }
+      const data = JSON.parse(message);
 
-    // handle message types
-    switch (data.type) {
-      case 'register': {
-        const name = (data.name || '').trim().slice(0, 60) || 'Anonymous';
-        const client = clients.get(id);
-        if (client) {
-          client.name = name;
-        }
-        broadcastUserList();
-        break;
+      switch (data.type) {
+        case 'set-name':
+          clients.get(id).name = data.name;
+          break;
+
+        case 'join':
+          // Assign user to a room (default room if none specified)
+          clients.get(id).room = data.room || 'main';
+          sendExistingParticipants(id);
+          break;
+
+        case 'offer':
+        case 'answer':
+        case 'ice-candidate':
+          // Forward to the target peer
+          const target = clients.get(data.to);
+          if (target) {
+            target.ws.send(JSON.stringify({
+              type: data.type,
+              from: id,
+              ...data
+            }));
+          }
+          break;
+
+        case 'leave':
+          handleLeave(id);
+          break;
+
+        case 'direct-call':
+          // For private calls
+          const targetUser = clients.get(data.to);
+          if (targetUser) {
+            targetUser.ws.send(JSON.stringify({
+              type: 'direct-call',
+              from: id,
+              name: clients.get(id).name
+            }));
+          }
+          break;
       }
-
-      // direct call signaling: caller -> server -> target
-      case 'call-user': {
-        // { type:'call-user', to: targetId, offer }
-        const target = clients.get(data.to);
-        const caller = clients.get(id);
-        if (target && target.ws.readyState === target.ws.OPEN) {
-          target.ws.send(JSON.stringify({
-            type: 'incoming-call',
-            from: id,
-            fromName: caller ? caller.name : 'Anonymous',
-            offer: data.offer
-          }));
-        } else {
-          // target not available
-          ws.send(JSON.stringify({ type: 'call-failed', reason: 'user-unavailable', to: data.to }));
-        }
-        break;
-      }
-
-      case 'accept-call': {
-        // { type: 'accept-call', to: callerId, answer }
-        const target = clients.get(data.to);
-        if (target && target.ws.readyState === target.ws.OPEN) {
-          target.ws.send(JSON.stringify({
-            type: 'call-accepted',
-            from: id,
-            answer: data.answer
-          }));
-        }
-        break;
-      }
-
-      case 'decline-call': {
-        // { type:'decline-call', to: callerId }
-        const target = clients.get(data.to);
-        if (target && target.ws.readyState === target.ws.OPEN) {
-          target.ws.send(JSON.stringify({
-            type: 'call-declined',
-            from: id
-          }));
-        }
-        break;
-      }
-
-      case 'ice-candidate': {
-        // { type:'ice-candidate', to: id, candidate }
-        const target = clients.get(data.to);
-        if (target && target.ws.readyState === target.ws.OPEN) {
-          target.ws.send(JSON.stringify({
-            type: 'ice-candidate',
-            from: id,
-            candidate: data.candidate
-          }));
-        }
-        break;
-      }
-
-      case 'hangup': {
-        // notify the other peer
-        const target = clients.get(data.to);
-        if (target && target.ws.readyState === target.ws.OPEN) {
-          target.ws.send(JSON.stringify({ type: 'hangup', from: id }));
-        }
-        break;
-      }
-
-      default:
-        console.log('Unknown message type', data.type);
+    } catch (err) {
+      console.error('Error parsing message:', err);
     }
   });
 
   ws.on('close', () => {
+    handleLeave(id);
     clients.delete(id);
-    broadcastUserList();
-    // notify remaining clients user left
-    const msg = JSON.stringify({ type: 'user-left', id });
-    for (const [, info] of clients.entries()) {
-      if (info.ws.readyState === info.ws.OPEN) info.ws.send(msg);
-    }
-  });
-
-  ws.on('error', (err) => {
-    console.error('WS error', err);
   });
 });
 
+function sendExistingParticipants(id) {
+  const client = clients.get(id);
+  if (!client) return;
+  const room = client.room;
+
+  const participants = [];
+  for (const [otherId, other] of clients.entries()) {
+    if (otherId !== id && other.room === room) {
+      participants.push({ id: otherId, name: other.name });
+      // Notify existing participant about the new participant
+      other.ws.send(JSON.stringify({
+        type: 'new-participant',
+        id,
+        name: client.name
+      }));
+    }
+  }
+
+  // Send existing participants list to the joining client
+  client.ws.send(JSON.stringify({
+    type: 'existing-participants',
+    participants
+  }));
+}
+
+function handleLeave(id) {
+  const client = clients.get(id);
+  if (!client) return;
+  const room = client.room;
+
+  // Notify others in the same room
+  for (const [otherId, other] of clients.entries()) {
+    if (otherId !== id && other.room === room) {
+      other.ws.send(JSON.stringify({
+        type: 'participant-left',
+        id
+      }));
+    }
+  }
+
+  client.room = null;
+}
+
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
