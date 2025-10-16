@@ -1,62 +1,53 @@
 const express = require('express');
+const http = require('http');
+const WebSocket = require('ws');
 const path = require('path');
-const { WebSocketServer } = require('ws');
 
 const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
-// Serve static files from the public folder
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Serve index.html for all routes
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/index.html'));
-});
-
-// Create a WebSocket server
-const wss = new WebSocketServer({ noServer: true });
 const clients = new Map();
 
-wss.on('connection', (ws) => {
-  const id = crypto.randomUUID();
-  clients.set(id, ws);
-  
-  // Send welcome message
-  ws.send(JSON.stringify({ type: 'welcome', id, participants: Array.from(clients.keys()) }));
+app.use(express.static(path.join(__dirname, 'public')));
 
-  // Notify others about new participant
-  clients.forEach((client, clientId) => {
-    if (client !== ws) {
+wss.on('connection', (ws) => {
+  const id = Math.random().toString(36).substring(2, 9);
+  clients.set(ws, id);
+
+  ws.send(JSON.stringify({ type: 'welcome', id }));
+
+  const others = [...clients.values()].filter(v => v !== id);
+  ws.send(JSON.stringify({ type: 'existing-participants', participants: others }));
+
+  for (const [client, clientId] of clients.entries()) {
+    if (client !== ws && client.readyState === WebSocket.OPEN) {
       client.send(JSON.stringify({ type: 'new-participant', id }));
     }
-  });
+  }
 
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
-      const target = clients.get(data.to);
-      if (target) {
-        target.send(JSON.stringify({ ...data, from: id }));
+      const target = [...clients.entries()].find(([client, clientId]) => clientId === data.to);
+
+      if (target && target[0].readyState === WebSocket.OPEN) {
+        target[0].send(JSON.stringify({ ...data, from: id }));
       }
-    } catch (e) {
-      console.error('Error parsing message', e);
+    } catch (err) {
+      console.error('Error handling message:', err);
     }
   });
 
   ws.on('close', () => {
-    clients.delete(id);
-    clients.forEach((client) => {
-      client.send(JSON.stringify({ type: 'participant-left', id }));
-    });
+    clients.delete(ws);
+    for (const [client, clientId] of clients.entries()) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({ type: 'participant-left', id }));
+      }
+    }
   });
 });
 
-// Upgrade HTTP server to handle WebSocket
-const server = app.listen(process.env.PORT || 3000, () => {
-  console.log(`Server running on port ${process.env.PORT || 3000}`);
-});
-
-server.on('upgrade', (request, socket, head) => {
-  wss.handleUpgrade(request, socket, head, (ws) => {
-    wss.emit('connection', ws, request);
-  });
-});
+const PORT = process.env.PORT || 10000;
+server.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
