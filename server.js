@@ -1,44 +1,58 @@
-// server.js
+const express = require('express');
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
+const path = require('path');
 
 const PORT = process.env.PORT || 3000;
-const wss = new WebSocket.Server({ port: PORT });
+const app = express();
+app.use(express.static(path.join(__dirname, 'public')));
 
-console.log(`WebSocket server running on port ${PORT}`);
+const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+const wss = new WebSocket.Server({ server });
 
-const clients = new Map(); // clientId -> ws
+const clients = new Map(); // clientId -> { ws, username }
 
 function broadcast(message, excludeId = null) {
-  for (const [id, ws] of clients) {
-    if (id !== excludeId && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(message));
+  for (const [id, client] of clients) {
+    if (id !== excludeId && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(JSON.stringify(message));
     }
   }
 }
 
 wss.on('connection', (ws) => {
   const clientId = uuidv4();
-  clients.set(clientId, ws);
+  let username = "";
 
-  // Send welcome + existing participants
-  ws.send(JSON.stringify({ type: 'welcome', id: clientId }));
-  ws.send(JSON.stringify({ type: 'existing-participants', participants: [...clients.keys()].filter(id => id !== clientId) }));
-
-  // Notify others of new participant
-  broadcast({ type: 'new-participant', id: clientId }, clientId);
-
-  ws.on('message', (message) => {
+  ws.on('message', (msg) => {
     try {
-      const data = JSON.parse(message);
+      const data = JSON.parse(msg);
 
       switch (data.type) {
+        case 'set-username':
+          username = data.username;
+          clients.set(clientId, { ws, username });
+          ws.send(JSON.stringify({ type: 'welcome', id: clientId }));
+          ws.send(JSON.stringify({
+            type: 'existing-participants',
+            participants: [...clients.entries()]
+              .filter(([id]) => id !== clientId)
+              .map(([id, c]) => ({ id, username: c.username }))
+          }));
+          broadcast({ type: 'new-participant', id: clientId, username }, clientId);
+          break;
+
         case 'offer':
         case 'answer':
         case 'ice-candidate':
-          const targetWs = clients.get(data.to);
-          if (targetWs && targetWs.readyState === WebSocket.OPEN) {
-            targetWs.send(JSON.stringify({ ...data, from: clientId }));
+        case 'text':
+          if (data.to) {
+            const target = clients.get(data.to);
+            if (target && target.ws.readyState === WebSocket.OPEN) {
+              target.ws.send(JSON.stringify({ ...data, from: clientId, username }));
+            }
+          } else if (data.type === 'text') {
+            broadcast({ ...data, from: clientId, username }, clientId);
           }
           break;
 
@@ -46,8 +60,8 @@ wss.on('connection', (ws) => {
           ws.close();
           break;
       }
-    } catch (err) {
-      console.error('Error parsing message:', err);
+    } catch (e) {
+      console.error('WS message error:', e);
     }
   });
 
@@ -56,7 +70,5 @@ wss.on('connection', (ws) => {
     broadcast({ type: 'participant-left', id: clientId });
   });
 
-  ws.on('error', (err) => {
-    console.error('WebSocket error:', err);
-  });
+  ws.on('error', (err) => console.error(err));
 });
