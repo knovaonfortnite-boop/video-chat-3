@@ -157,4 +157,62 @@
     const joinBtn = document.getElementById('joinBtn');
     const leaveBtn = document.getElementById('leaveBtn');
     const status = document.getElementById('status');
-    const userLabel = document.getElementById('
+    const userLabel = document.getElementById('userLabel');
+
+    let username = '';
+    let localStream;
+    let camOff = false;
+    let camOffBox = null;
+
+    function randomColor() {
+      const colors = ['#f43f5e','#3b82f6','#10b981','#eab308','#a855f7','#f97316','#ec4899','#22d3ee'];
+      return colors[Math.floor(Math.random() * colors.length)];
+    }
+
+    async function startCamera() {
+      username = prompt("Enter your name:") || "Anonymous";
+      userLabel.textContent = username;
+
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localVideo.srcObject = localStream;
+        startBtn.disabled = true;
+        toggleCamBtn.disabled = false;
+        updateStatus(`${username}, your camera is on!`);
+      } catch (error) {
+        console.error('Error accessing media devices:', error);
+        updateStatus('Error: Could not access camera/microphone');
+      }
+    }
+
+    function toggleCamera() {
+      camOff = !camOff;
+
+      if (camOff) {
+        localStream.getVideoTracks().forEach(track => track.enabled = false);
+        localVideo.style.display = 'none';
+
+        camOffBox = document.createElement('div');
+        camOffBox.className = 'cam-off-box';
+        camOffBox.style.background = randomColor();
+        camOffBox.textContent = username;
+        localVideo.parentElement.appendChild(camOffBox);
+
+        toggleCamBtn.textContent = 'Turn On Camera';
+      } else {
+        localStream.getVideoTracks().forEach(track => track.enabled = true);
+        if (camOffBox) camOffBox.remove();
+        localVideo.style.display = 'block';
+        toggleCamBtn.textContent = 'Turn Off Camera';
+      }
+    }
+
+    function updateStatus(message) {
+      status.textContent = message;
+    }
+
+    startBtn.addEventListener('click', startCamera);
+    toggleCamBtn.addEventListener('click', toggleCamera);
+  </script>
+</body>
+</html>
