@@ -1,261 +1,182 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mini FaceTime Chat</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background: #000;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 20px;
-    }
-    .container { width: 100%; max-width: 1400px; }
-    .video-container {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 15px;
-      margin-bottom: 20px;
-      justify-items: center;
-    }
-    .video-wrapper {
-      position: relative;
-      width: 100%;
-      padding-top: 56.25%;
-      background: #222;
-      border-radius: 8px;
-      overflow: hidden;
-    }
-    video {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      object-fit: cover;
-    }
-    .video-label {
-      position: absolute;
-      bottom: 8px; left: 8px;
-      background: rgba(0,0,0,0.6);
-      color: #fff;
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 14px; font-weight: 500;
-    }
-    .controls {
-      display: flex;
-      justify-content: center;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-bottom: 15px;
-    }
-    button {
-      padding: 8px 18px;
-      font-size: 16px;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-weight: 600;
-      transition: all 0.3s ease;
-      color: white;
-    }
-    #startBtn { background: #10b981; } #startBtn:hover { background: #059669; }
-    #joinBtn { background: #3b82f6; } #joinBtn:hover { background: #2563eb; }
-    #leaveBtn { background: #ef4444; } #leaveBtn:hover { background: #dc2626; }
-    #toggleCamBtn { background: #f59e0b; } #toggleCamBtn:hover { background: #d97706; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-    .status {
-      text-align: center;
-      color: white;
-      margin-top: 10px;
-      font-size: 16px;
-      padding: 10px;
-      background: rgba(255,255,255,0.1);
-      border-radius: 8px;
-    }
-    #userList { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 15px; }
-    #userList button { background: #6b7280; }
-    @media (max-width: 768px) {
-      .video-container { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini FaceTime Chat</title>
+<style>
+* {margin:0;padding:0;box-sizing:border-box;}
+body {font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,Cantarell,sans-serif;background:#000;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px;}
+.container {width:100%;max-width:1400px;}
+.video-container {display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px;margin-bottom:20px;justify-items:center;}
+.video-wrapper {position:relative;width:100%;padding-top:56.25%;background:#222;border-radius:8px;overflow:hidden;}
+video {position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;}
+.video-label {position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,0.6);color:#fff;padding:4px 8px;border-radius:4px;font-size:14px;font-weight:500;}
+.controls {display:flex;justify-content:center;gap:15px;flex-wrap:wrap;margin-bottom:20px;}
+button {padding:10px 20px;font-size:16px;border:none;border-radius:6px;cursor:pointer;font-weight:600;transition:all 0.3s ease;color:white;}
+#startBtn{background:#10b981;}#startBtn:hover{background:#059669;}
+#joinBtn{background:#3b82f6;}#joinBtn:hover{background:#2563eb;}
+#leaveBtn{background:#ef4444;}#leaveBtn:hover{background:#dc2626;}
+#toggleCamBtn{background:#f59e0b;}#toggleCamBtn:hover{background:#d97706;}
+button:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
+.status{text-align:center;color:white;margin-top:10px;font-size:16px;padding:10px;background:rgba(255,255,255,0.1);border-radius:8px;}
+.user-list{color:white;margin-bottom:20px;}
+</style>
 </head>
 <body>
-  <div class="container">
-    <div class="video-container" id="videoContainer">
-      <div class="video-wrapper" id="localWrapper">
-        <video id="localVideo" autoplay muted playsinline></video>
-        <div class="video-label" id="localLabel">You</div>
-      </div>
+<div class="container">
+  <div class="user-list" id="userList">Users Online:</div>
+  <div class="video-container" id="videoContainer">
+    <div class="video-wrapper" id="localWrapper">
+      <video id="localVideo" autoplay muted playsinline></video>
+      <div class="video-label" id="localLabel">You</div>
     </div>
-
-    <div id="userList" class="controls"></div>
-
-    <div class="controls">
-      <button id="startBtn">Start Camera</button>
-      <button id="joinBtn" disabled>Join Call</button>
-      <button id="leaveBtn" disabled>Leave Call</button>
-      <button id="toggleCamBtn" disabled>Turn Camera Off</button>
-    </div>
-
-    <div class="status" id="status">Click "Start Camera" to begin</div>
   </div>
 
-  <script>
-    const videoContainer = document.getElementById('videoContainer');
-    const localVideo = document.getElementById('localVideo');
-    const localLabel = document.getElementById('localLabel');
-    const localWrapper = document.getElementById('localWrapper');
-    const startBtn = document.getElementById('startBtn');
-    const joinBtn = document.getElementById('joinBtn');
-    const leaveBtn = document.getElementById('leaveBtn');
-    const toggleCamBtn = document.getElementById('toggleCamBtn');
-    const status = document.getElementById('status');
-    const userListDiv = document.getElementById('userList');
+  <div class="controls">
+    <button id="startBtn">Start Camera</button>
+    <button id="joinBtn" disabled>Join Call</button>
+    <button id="leaveBtn" disabled>Leave Call</button>
+    <button id="toggleCamBtn" disabled>Turn Camera Off</button>
+  </div>
 
-    let localStream;
-    let ws;
-    let myId;
-    let username;
-    let inCall = false;
-    let camOn = true;
-    const peerConnections = new Map();
-    const remoteVideos = new Map();
-    const onlineUsers = new Map();
+  <div class="status" id="status">Click "Start Camera" to begin</div>
+</div>
 
-    const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+<script>
+const videoContainer = document.getElementById('videoContainer');
+const localVideo = document.getElementById('localVideo');
+const localLabel = document.getElementById('localLabel');
+const localWrapper = document.getElementById('localWrapper');
+const startBtn = document.getElementById('startBtn');
+const joinBtn = document.getElementById('joinBtn');
+const leaveBtn = document.getElementById('leaveBtn');
+const toggleCamBtn = document.getElementById('toggleCamBtn');
+const status = document.getElementById('status');
+const userList = document.getElementById('userList');
 
-    // --- NOTIFICATIONS ---
-    if("Notification" in window) Notification.requestPermission();
-    function notify(title, body, onClick) {
-      if(Notification.permission === "granted"){
-        const notif = new Notification(title,{body, requireInteraction:true});
-        notif.onclick = onClick;
-      } else { if(confirm(body)) onClick(); }
+let localStream, ws, myId, inCall=false, camOn=true;
+const peerConnections = new Map();
+const remoteVideos = new Map();
+const config = { iceServers:[{urls:'stun:stun.l.google.com:19302'}] };
+
+function updateStatus(msg){ status.textContent = msg; }
+
+async function startCamera(){
+  const username = prompt("Enter your name:");
+  if(!username) return alert("You must enter a name!");
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({video:true,audio:true});
+    localVideo.srcObject = localStream;
+    localLabel.textContent = username;
+    startBtn.disabled=true;
+    toggleCamBtn.disabled=false;
+    updateStatus("Camera started - Connecting...");
+    connectWebSocket(username);
+  } catch(err){ console.error(err); updateStatus("Error accessing camera/microphone"); }
+}
+
+toggleCamBtn.addEventListener('click',()=>{
+  camOn = !camOn;
+  localStream.getVideoTracks()[0].enabled = camOn;
+  toggleCamBtn.textContent = camOn?"Turn Camera Off":"Turn Camera On";
+  if(!camOn){ localVideo.style.display='none'; localWrapper.style.background='#'+Math.floor(Math.random()*16777215).toString(16); }
+  else{ localVideo.style.display='block'; localWrapper.style.background='#000'; }
+});
+
+// --- WebSocket & Peer connections ---
+function connectWebSocket(username){
+  ws = new WebSocket('ws://localhost:8080'); // change to your server
+
+  ws.onopen = ()=>{ updateStatus("Connected to server"); joinBtn.disabled=false; ws.send(JSON.stringify({type:'join',name:username})); };
+
+  ws.onmessage = async(event)=>{
+    const msg = JSON.parse(event.data);
+    switch(msg.type){
+      case 'welcome': myId=msg.id; break;
+      case 'user-list': updateUserList(msg.users); break;
+      case 'offer': await handleOffer(msg.offer,msg.from); break;
+      case 'answer': await handleAnswer(msg.answer,msg.from); break;
+      case 'ice-candidate': await handleIceCandidate(msg.candidate,msg.from); break;
+      case 'call-request': if(confirm(`${msg.fromName} wants to call you! Accept?`)){ createPeerConnection(msg.from,false); } break;
+      case 'participant-left': handleParticipantLeft(msg.id); break;
     }
+  };
 
-    // --- CAMERA ---
-    async function startCamera(){
-      username = prompt("Enter your name:");
-      if(!username) return alert("You must enter a name!");
-      localLabel.textContent = username;
+  ws.onerror = ()=>updateStatus("WebSocket error");
+  ws.onclose = ()=>updateStatus("Disconnected");
+}
 
-      try{
-        localStream = await navigator.mediaDevices.getUserMedia({video:true,audio:true});
-        localVideo.srcObject = localStream;
-        startBtn.disabled=true;
-        toggleCamBtn.disabled=false;
-        updateStatus("Camera started - Connecting to server...");
-        connectWebSocket();
-      } catch(err){ console.error(err); updateStatus("Error accessing camera/microphone"); }
-    }
+function updateUserList(users){
+  userList.textContent = "Users Online: " + users.filter(u=>u.id!==myId).map(u=>u.name).join(", ");
+}
 
-    toggleCamBtn.addEventListener('click', ()=>{
-      camOn = !camOn;
-      localStream.getVideoTracks()[0].enabled = camOn;
-      toggleCamBtn.textContent = camOn?"Turn Camera Off":"Turn Camera On";
-      if(!camOn){
-        localVideo.style.display='none';
-        localWrapper.style.background='#'+Math.floor(Math.random()*16777215).toString(16);
-      } else {
-        localVideo.style.display='block';
-        localWrapper.style.background='#000';
-      }
-    });
+async function createPeerConnection(peerId,isInitiator){
+  const pc = new RTCPeerConnection(config);
+  peerConnections.set(peerId,pc);
+  localStream.getTracks().forEach(track=>pc.addTrack(track,localStream));
 
-    function updateStatus(msg){ status.textContent=msg; }
+  pc.ontrack = (event)=>addRemoteVideo(peerId,event.streams[0]);
+  pc.onicecandidate = e=>{ if(e.candidate) ws.send(JSON.stringify({type:'ice-candidate',candidate:e.candidate,to:peerId})); };
 
-    // --- WEBSOCKET ---
-    function connectWebSocket(){
-      ws = new WebSocket('wss://video-chat-3-4.onrender.com');
-      ws.onopen = ()=>updateStatus('Connected to server');
-      ws.onmessage = async event => {
-        const msg = JSON.parse(event.data);
-        switch(msg.type){
-          case 'welcome': myId=msg.id; joinBtn.disabled=false; break;
-          case 'user-list': renderUserList(msg.users); break;
-          case 'call-request': notify("Incoming Call",`${msg.fromName} is calling!`,()=>acceptCall(msg.from)); break;
-          case 'offer': await handleOffer(msg.offer,msg.from); break;
-          case 'answer': await handleAnswer(msg.answer,msg.from); break;
-          case 'ice-candidate': await handleIceCandidate(msg.candidate,msg.from); break;
-          case 'participant-left': handleParticipantLeft(msg.id); break;
-        }
-      };
-      ws.onerror=()=>updateStatus("WebSocket error");
-      ws.onclose=()=>updateStatus("Disconnected from server");
-    }
+  if(isInitiator){
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    ws.send(JSON.stringify({type:'offer',offer,to:peerId}));
+  }
+  return pc;
+}
 
-    // --- ONLINE USERS LIST ---
-    function renderUserList(users){
-      onlineUsers.clear();
-      userListDiv.innerHTML='';
-      users.forEach(u=>{
-        if(u.id===myId) return;
-        onlineUsers.set(u.id,u.name);
-        const btn=document.createElement('button');
-        btn.textContent=`Call ${u.name}`;
-        btn.onclick=()=>startPrivateCall([u.id]);
-        userListDiv.appendChild(btn);
-      });
-    }
+async function handleOffer(offer,fromId){
+  let pc = peerConnections.get(fromId);
+  if(!pc) pc = await createPeerConnection(fromId,false);
+  await pc.setRemoteDescription(new RTCSessionDescription(offer));
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  ws.send(JSON.stringify({type:'answer',answer,to:fromId}));
+}
 
-    // --- PRIVATE / GROUP CALL ---
-    function startPrivateCall(ids){
-      ids.forEach(id=>ws.send(JSON.stringify({type:'call-request',to:id,fromName:username})));
-    }
+async function handleAnswer(answer,fromId){
+  const pc = peerConnections.get(fromId);
+  if(pc) await pc.setRemoteDescription(new RTCSessionDescription(answer));
+}
 
-    async function acceptCall(peerId){
-      if(peerConnections.has(peerId)) return;
-      const pc = await createPeerConnection(peerId);
-      ws.send(JSON.stringify({type:'join',to:[peerId]}));
-      inCall=true;
-      joinBtn.disabled=true;
-      leaveBtn.disabled=false;
-      updateStatus("In call with "+peerId);
-    }
+async function handleIceCandidate(candidate,fromId){
+  const pc = peerConnections.get(fromId);
+  if(pc) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+}
 
-    // --- PEER CONNECTIONS ---
-    async function createPeerConnection(peerId,isInitiator=false){
-      const pc = new RTCPeerConnection(config);
-      peerConnections.set(peerId,pc);
-      localStream.getTracks().forEach(track=>pc.addTrack(track,localStream));
-      pc.ontrack = e => addRemoteVideo(peerId,e.streams[0]);
-      pc.onicecandidate = e => { if(e.candidate) ws.send(JSON.stringify({type:'ice-candidate',candidate:e.candidate,to:peerId})); }
-      if(isInitiator){
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        ws.send(JSON.stringify({type:'offer',offer,to:peerId}));
-      }
-      return pc;
-    }
+function addRemoteVideo(peerId,stream){
+  if(remoteVideos.has(peerId)) return;
+  const wrapper = document.createElement('div');
+  wrapper.className='video-wrapper';
+  wrapper.id=`video-${peerId}`;
+  const video = document.createElement('video');
+  video.autoplay=true; video.playsInline=true; video.srcObject=stream;
+  const label = document.createElement('div');
+  label.className='video-label';
+  label.textContent=`Participant ${peerId.substring(0,4)}`;
+  wrapper.appendChild(video); wrapper.appendChild(label); videoContainer.appendChild(wrapper);
+  remoteVideos.set(peerId,wrapper);
+}
 
-    async function handleOffer(offer,fromId){
-      let pc = peerConnections.get(fromId);
-      if(!pc) pc = await createPeerConnection(fromId,false);
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      ws.send(JSON.stringify({type:'answer',answer,to:fromId}));
-    }
+function handleParticipantLeft(peerId){
+  const pc=peerConnections.get(peerId); if(pc) pc.close(); peerConnections.delete(peerId);
+  const elem = remoteVideos.get(peerId); if(elem) elem.remove(); remoteVideos.delete(peerId);
+}
 
-    async function handleAnswer(answer,fromId){
-      const pc = peerConnections.get(fromId);
-      if(pc) await pc.setRemoteDescription(new RTCSessionDescription(answer));
-    }
+function joinCall(){ inCall=true; joinBtn.disabled=true; leaveBtn.disabled=false; ws.send(JSON.stringify({type:'join-call'})); updateStatus('Joining call...'); }
+function leaveCall(){
+  inCall=false; ws.send(JSON.stringify({type:'leave-call'}));
+  peerConnections.forEach(pc=>pc.close()); peerConnections.clear();
+  remoteVideos.forEach(e=>e.remove()); remoteVideos.clear();
+  joinBtn.disabled=false; leaveBtn.disabled=true;
+  updateStatus('Left call');
+}
 
-    async function handleIceCandidate(candidate,fromId){
-      const pc = peerConnections.get(fromId);
-      if(pc) await pc.addIceCandidate(new RTCIceCandidate(candidate));
-    }
-
-    function addRemoteVideo(peerId,stream){
-      if(remoteVideos.has(peerId)) return;
-      const wrapper=document.createElement('div');
-      wrapper.className='video-wrapper';
-      wrapper.id=`video-${peerId}`;
-      const video=document.createElement('video');
-      video.autoplay=true; video.playsInline=true; video.srcObject
+startBtn.addEventListener('click',startCamera);
+joinBtn.addEventListener('click',joinCall);
+leaveBtn.addEventListener('click',leaveCall);
+</script>
+</body>
+</html>
