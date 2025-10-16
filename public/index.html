@@ -5,257 +5,115 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Video Chat</title>
 <style>
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    margin: 0;
-    display: flex;
-    height: 100vh;
-    background: #000;
-  }
-  #sidebar {
-    width: 250px;
-    background: #111;
-    color: white;
-    overflow-y: auto;
-    padding: 10px;
-  }
-  #sidebar h2 { font-size: 18px; margin-bottom: 10px; }
-  .user { cursor: pointer; padding: 5px; border-bottom: 1px solid #222; }
-  .user:hover { background: #222; }
-  #main {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    padding: 10px;
-  }
-  #videoContainer {
-    flex: 1;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 10px;
-    justify-items: center;
-    align-items: center;
-  }
-  .video-wrapper {
-    position: relative;
-    width: 100%;
-    padding-top: 56.25%; /* 16:9 ratio */
-    background: #222;
-    border-radius: 8px;
-    overflow: hidden;
-  }
-  video {
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  .video-label {
-    position: absolute;
-    bottom: 5px;
-    left: 5px;
-    background: rgba(0,0,0,0.6);
-    color: #fff;
-    padding: 2px 5px;
-    border-radius: 4px;
-    font-size: 12px;
-  }
-  #controls {
-    margin-top: 10px;
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  button {
-    padding: 8px 15px;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: bold;
-    color: white;
-  }
-  #startBtn { background: #10b981; }
-  #joinBtn { background: #3b82f6; }
-  #leaveBtn { background: #ef4444; }
-  #toggleCamBtn { background: #f59e0b; }
-  #status { margin-top: 10px; color: white; }
+body {margin:0;background:#000;color:#fff;font-family:sans-serif;display:flex;height:100vh;}
+#sidebar {width:250px;background:#111;padding:10px;overflow-y:auto;}
+#sidebar h2 {margin-top:0;}
+#onlineUsers button {width:100%;margin:3px 0;padding:8px;border:none;border-radius:4px;background:#222;color:#fff;cursor:pointer;}
+#main {flex:1;display:flex;flex-direction:column;align-items:center;padding:10px;}
+.video-container {display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px;width:100%;}
+.video-wrapper {position:relative;padding-top:56.25%;background:#222;border-radius:8px;overflow:hidden;}
+video {position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;}
+.video-label {position:absolute;bottom:5px;left:5px;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;font-size:12px;}
+.controls {margin:10px 0;display:flex;gap:10px;flex-wrap:wrap;justify-content:center;}
+button {padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-weight:600;}
+#startBtn {background:#10b981;} #toggleCamBtn {background:#f59e0b;} #leaveBtn {background:#ef4444;}
+.status {margin-top:10px;text-align:center;background:rgba(255,255,255,0.1);padding:6px 10px;border-radius:6px;}
 </style>
 </head>
 <body>
-
 <div id="sidebar">
-  <h2>Online Users</h2>
-  <div id="usersList"></div>
+  <h2>Online</h2>
+  <div id="onlineUsers"></div>
 </div>
-
 <div id="main">
-  <div id="videoContainer">
+  <div class="video-container" id="videoContainer">
     <div class="video-wrapper" id="localWrapper">
       <video id="localVideo" autoplay muted playsinline></video>
       <div class="video-label" id="localLabel">You</div>
     </div>
   </div>
-
-  <div id="controls">
+  <div class="controls">
     <button id="startBtn">Start Camera</button>
-    <button id="joinBtn" disabled>Join Call</button>
-    <button id="leaveBtn" disabled>Leave Call</button>
     <button id="toggleCamBtn" disabled>Turn Camera Off</button>
+    <button id="leaveBtn" disabled>Leave Call</button>
   </div>
-
-  <div id="status">Click "Start Camera" to begin</div>
+  <div class="status" id="status">Click "Start Camera" to begin</div>
 </div>
 
 <script>
-let localStream, ws, myId, camOn = true;
-const peerConnections = new Map();
-const remoteVideos = new Map();
+let ws, myId, localStream, camOn = true;
+const localVideo = document.getElementById("localVideo");
+const localWrapper = document.getElementById("localWrapper");
+const localLabel = document.getElementById("localLabel");
+const onlineUsers = document.getElementById("onlineUsers");
+const startBtn = document.getElementById("startBtn");
+const toggleCamBtn = document.getElementById("toggleCamBtn");
+const leaveBtn = document.getElementById("leaveBtn");
+const status = document.getElementById("status");
 
-const localVideo = document.getElementById('localVideo');
-const localLabel = document.getElementById('localLabel');
-const localWrapper = document.getElementById('localWrapper');
-const videoContainer = document.getElementById('videoContainer');
-const usersList = document.getElementById('usersList');
+function updateStatus(msg){ status.textContent = msg; }
 
-const startBtn = document.getElementById('startBtn');
-const joinBtn = document.getElementById('joinBtn');
-const leaveBtn = document.getElementById('leaveBtn');
-const toggleCamBtn = document.getElementById('toggleCamBtn');
-const status = document.getElementById('status');
-
-const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-
-function updateStatus(msg) { status.textContent = msg; }
-
-// Start camera
-startBtn.addEventListener('click', async () => {
+startBtn.onclick = async () => {
   const username = prompt("Enter your name:");
-  if (!username) return alert("You must enter a name!");
-  localLabel.textContent = username;
+  if(!username) return;
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     localVideo.srcObject = localStream;
+    localLabel.textContent = username;
     startBtn.disabled = true;
     toggleCamBtn.disabled = false;
-    updateStatus("Camera started - connecting to server...");
+    leaveBtn.disabled = false;
     connectWebSocket(username);
-  } catch(err) {
+    updateStatus("Camera started.");
+  } catch (err) {
     console.error(err);
-    updateStatus("Error accessing camera/microphone");
+    updateStatus("Camera failed to start.");
   }
-});
+};
 
-// Toggle camera
-toggleCamBtn.addEventListener('click', () => {
+toggleCamBtn.onclick = () => {
   camOn = !camOn;
   localStream.getVideoTracks()[0].enabled = camOn;
   toggleCamBtn.textContent = camOn ? "Turn Camera Off" : "Turn Camera On";
-  localVideo.style.display = camOn ? 'block' : 'none';
-  if(!camOn) localWrapper.style.background = '#'+Math.floor(Math.random()*16777215).toString(16);
-  else localWrapper.style.background = '#222';
-});
-
-// Leave Call
-leaveBtn.addEventListener('click', () => {
-  ws.send(JSON.stringify({ type: 'leave' }));
-  peerConnections.forEach(pc => pc.close());
-  peerConnections.clear();
-  remoteVideos.forEach(e => e.remove());
-  remoteVideos.clear();
-  joinBtn.disabled = false;
-  leaveBtn.disabled = true;
-  updateStatus("Left call");
-});
-
-// Join Call
-joinBtn.addEventListener('click', () => {
-  ws.send(JSON.stringify({ type: 'join' }));
-  joinBtn.disabled = true;
-  leaveBtn.disabled = false;
-  updateStatus("Joining call...");
-});
-
-// WebSocket connection
-function connectWebSocket(username){
-  ws = new WebSocket('wss://YOUR-RENDER-SERVER-URL'); // replace with your server
-
-  ws.onopen = () => {
-    console.log('Connected');
-    ws.send(JSON.stringify({ type: 'set-username', username }));
-    updateStatus("Connected to server");
-    joinBtn.disabled = false;
-  };
-
-  ws.onmessage = async (event) => {
-    const message = JSON.parse(event.data);
-
-    switch(message.type){
-      case 'online-users':
-        updateUsersList(message.users);
-        break;
-      case 'offer':
-        await handleOffer(message.offer, message.from);
-        break;
-      case 'answer':
-        await handleAnswer(message.answer, message.from);
-        break;
-      case 'ice-candidate':
-        await handleIceCandidate(message.candidate, message.from);
-        break;
-      case 'participant-left':
-        handleParticipantLeft(message.id);
-        break;
-    }
-  };
-
-  ws.onerror = () => updateStatus("WebSocket error");
-  ws.onclose = () => updateStatus("Disconnected from server");
-}
-
-// Update online users sidebar
-function updateUsersList(users){
-  usersList.innerHTML = '';
-  users.forEach(u => {
-    if(u.id !== myId){
-      const div = document.createElement('div');
-      div.className = 'user';
-      div.textContent = u.username;
-      div.onclick = () => startPrivateCall(u.id);
-      usersList.appendChild(div);
-    }
-  });
-}
-
-// Start Private Call
-async function startPrivateCall(peerId){
-  if(peerConnections.has(peerId)) return;
-  await createPeerConnection(peerId, true);
-}
-
-// Peer Connection
-async function createPeerConnection(peerId, isInitiator){
-  const pc = new RTCPeerConnection(config);
-  peerConnections.set(peerId, pc);
-  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-  pc.ontrack = e => addRemoteVideo(peerId, e.streams[0]);
-  pc.onicecandidate = e => {
-    if(e.candidate) ws.send(JSON.stringify({ type:'ice-candidate', candidate:e.candidate, to:peerId }));
-  };
-
-  if(isInitiator){
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    ws.send(JSON.stringify({ type:'offer', offer, to:peerId }));
+  if (!camOn) {
+    localVideo.style.display = "none";
+    localWrapper.style.background = "#" + Math.floor(Math.random()*16777215).toString(16);
+  } else {
+    localVideo.style.display = "block";
+    localWrapper.style.background = "#222";
   }
-}
+};
 
-// Handle incoming offer
-async function handleOffer(offer, fromId){
-  let pc = peerConnections.get(fromId);
-  if(!pc) pc = await createPeerConnection(fromId, false);
-  await pc.setRemoteDescription(new RTCSessionDescription(offer));
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-  ws.send(JSON.stringify({ type:'answer', answer, to:from
+leaveBtn.onclick = () => {
+  ws?.close();
+  updateStatus("Disconnected.");
+  startBtn.disabled = false;
+  toggleCamBtn.disabled = true;
+  leaveBtn.disabled = true;
+};
+
+function connectWebSocket(username) {
+  ws = new WebSocket("wss://YOUR_RENDER_URL.onrender.com"); // change this!
+  ws.onopen = () => {
+    updateStatus("Connected to server.");
+    ws.send(JSON.stringify({ type: "set-username", username }));
+  };
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === "welcome") myId = data.id;
+    if (data.type === "online-users") {
+      onlineUsers.innerHTML = "";
+      data.users.forEach(u => {
+        if (u.id === myId) return;
+        const btn = document.createElement("button");
+        btn.textContent = u.username;
+        btn.onclick = () => alert(`You would call ${u.username} (coming soon!)`);
+        onlineUsers.appendChild(btn);
+      });
+    }
+  };
+  ws.onclose = () => updateStatus("Disconnected from server.");
+}
+</script>
+</body>
+</html>
