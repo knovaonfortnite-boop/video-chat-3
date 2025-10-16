@@ -5,15 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mini FaceTime Chat</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background: #000000;
+      background: #000;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
@@ -28,10 +24,7 @@
       font-size: 2em;
     }
 
-    .container {
-      width: 100%;
-      max-width: 1400px;
-    }
+    .container { width: 100%; max-width: 1400px; }
 
     .video-container {
       display: grid;
@@ -91,29 +84,17 @@
       box-shadow: 0 5px 15px rgba(255, 255, 255, 0.2);
     }
 
-    #startBtn {
-      background: #10b981;
-    }
+    #startBtn { background: #10b981; }
+    #startBtn:hover { background: #059669; }
 
-    #startBtn:hover {
-      background: #059669;
-    }
+    #joinBtn { background: #3b82f6; }
+    #joinBtn:hover { background: #2563eb; }
 
-    #joinBtn {
-      background: #3b82f6;
-    }
+    #leaveBtn { background: #ef4444; }
+    #leaveBtn:hover { background: #dc2626; }
 
-    #joinBtn:hover {
-      background: #2563eb;
-    }
-
-    #leaveBtn {
-      background: #ef4444;
-    }
-
-    #leaveBtn:hover {
-      background: #dc2626;
-    }
+    #toggleCamBtn { background: #a855f7; }
+    #toggleCamBtn:hover { background: #9333ea; }
 
     button:disabled {
       opacity: 0.5;
@@ -131,10 +112,21 @@
       border-radius: 8px;
     }
 
+    .cam-off-box {
+      width: 100%;
+      height: 300px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: bold;
+      color: white;
+      border-radius: 12px;
+      text-transform: capitalize;
+    }
+
     @media (max-width: 768px) {
-      .video-container {
-        grid-template-columns: 1fr;
-      }
+      .video-container { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -143,12 +135,13 @@
     <div class="video-container" id="videoContainer">
       <div class="video-wrapper">
         <video id="localVideo" autoplay muted playsinline></video>
-        <div class="video-label">You</div>
+        <div class="video-label" id="userLabel">You</div>
       </div>
     </div>
 
     <div class="controls">
       <button id="startBtn">Start Camera</button>
+      <button id="toggleCamBtn" disabled>Turn Off Camera</button>
       <button id="joinBtn" disabled>Join Call</button>
       <button id="leaveBtn" disabled>Leave Call</button>
     </div>
@@ -160,253 +153,8 @@
     const videoContainer = document.getElementById('videoContainer');
     const localVideo = document.getElementById('localVideo');
     const startBtn = document.getElementById('startBtn');
+    const toggleCamBtn = document.getElementById('toggleCamBtn');
     const joinBtn = document.getElementById('joinBtn');
     const leaveBtn = document.getElementById('leaveBtn');
     const status = document.getElementById('status');
-
-    let localStream;
-    let ws;
-    let myId;
-    let inCall = false;
-    const peerConnections = new Map();
-    const remoteVideos = new Map();
-
-    const config = {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ]
-    };
-
-    function connectWebSocket() {
-      ws = new WebSocket('wss://video-chat-3-4.onrender.com');
-
-      ws.onopen = () => {
-        console.log('WebSocket connected');
-        updateStatus('Connected to server');
-      };
-
-      ws.onmessage = async (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          console.log('Received message:', message.type);
-
-          switch (message.type) {
-            case 'welcome':
-              myId = message.id;
-              updateStatus(`Connected - Your ID: ${myId}`);
-              joinBtn.disabled = false;
-              break;
-            
-            case 'existing-participants':
-              for (const id of message.participants) {
-                await createPeerConnection(id, true);
-              }
-              break;
-            
-            case 'new-participant':
-              break;
-            
-            case 'offer':
-              await handleOffer(message.offer, message.from);
-              break;
-            
-            case 'answer':
-              await handleAnswer(message.answer, message.from);
-              break;
-            
-            case 'ice-candidate':
-              await handleIceCandidate(message.candidate, message.from);
-              break;
-            
-            case 'participant-left':
-              handleParticipantLeft(message.id);
-              break;
-          }
-        } catch (error) {
-          console.error('Error handling message:', error);
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        updateStatus('Connection error');
-      };
-
-      ws.onclose = () => {
-        console.log('WebSocket disconnected');
-        updateStatus('Disconnected from server');
-      };
-    }
-
-    function updateStatus(message) {
-      status.textContent = message;
-    }
-
-    async function startCamera() {
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia({ 
-          video: true, 
-          audio: true 
-        });
-        localVideo.srcObject = localStream;
-        startBtn.disabled = true;
-        updateStatus('Camera started - Connecting to server...');
-        connectWebSocket();
-      } catch (error) {
-        console.error('Error accessing media devices:', error);
-        updateStatus('Error: Could not access camera/microphone');
-      }
-    }
-
-    async function createPeerConnection(peerId, isInitiator) {
-      console.log(`Creating peer connection with ${peerId}, initiator: ${isInitiator}`);
-      
-      const pc = new RTCPeerConnection(config);
-      peerConnections.set(peerId, pc);
-
-      localStream.getTracks().forEach(track => {
-        pc.addTrack(track, localStream);
-      });
-
-      pc.ontrack = (event) => {
-        console.log(`Received track from ${peerId}`);
-        addRemoteVideo(peerId, event.streams[0]);
-      };
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          ws.send(JSON.stringify({
-            type: 'ice-candidate',
-            candidate: event.candidate,
-            to: peerId
-          }));
-        }
-      };
-
-      pc.onconnectionstatechange = () => {
-        console.log(`Connection state with ${peerId}:`, pc.connectionState);
-        if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-          handleParticipantLeft(peerId);
-        }
-      };
-
-      if (isInitiator) {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        ws.send(JSON.stringify({
-          type: 'offer',
-          offer: offer,
-          to: peerId
-        }));
-      }
-
-      return pc;
-    }
-
-    async function handleOffer(offer, fromId) {
-      let pc = peerConnections.get(fromId);
-      if (!pc) {
-        pc = await createPeerConnection(fromId, false);
-      }
-
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-
-      ws.send(JSON.stringify({
-        type: 'answer',
-        answer: answer,
-        to: fromId
-      }));
-    }
-
-    async function handleAnswer(answer, fromId) {
-      const pc = peerConnections.get(fromId);
-      if (pc) {
-        await pc.setRemoteDescription(new RTCSessionDescription(answer));
-      }
-    }
-
-    async function handleIceCandidate(candidate, fromId) {
-      const pc = peerConnections.get(fromId);
-      if (pc) {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
-      }
-    }
-
-    function addRemoteVideo(peerId, stream) {
-      if (remoteVideos.has(peerId)) return;
-
-      const wrapper = document.createElement('div');
-      wrapper.className = 'video-wrapper';
-      wrapper.id = `video-${peerId}`;
-
-      const video = document.createElement('video');
-      video.autoplay = true;
-      video.playsinline = true;
-      video.srcObject = stream;
-
-      const label = document.createElement('div');
-      label.className = 'video-label';
-      label.textContent = `Participant ${peerId.substring(0, 4)}`;
-
-      wrapper.appendChild(video);
-      wrapper.appendChild(label);
-      videoContainer.appendChild(wrapper);
-      
-      remoteVideos.set(peerId, wrapper);
-      updateStatus(`${peerConnections.size} participant(s) in call`);
-    }
-
-    function handleParticipantLeft(peerId) {
-      const pc = peerConnections.get(peerId);
-      if (pc) {
-        pc.close();
-        peerConnections.delete(peerId);
-      }
-
-      const videoElement = remoteVideos.get(peerId);
-      if (videoElement) {
-        videoElement.remove();
-        remoteVideos.delete(peerId);
-      }
-
-      updateStatus(`${peerConnections.size} participant(s) in call`);
-    }
-
-    function joinCall() {
-      inCall = true;
-      joinBtn.disabled = true;
-      leaveBtn.disabled = false;
-      
-      ws.send(JSON.stringify({ type: 'join' }));
-      updateStatus('Joining call...');
-    }
-
-    function leaveCall() {
-      inCall = false;
-      
-      ws.send(JSON.stringify({ type: 'leave' }));
-      
-      peerConnections.forEach((pc, peerId) => {
-        pc.close();
-      });
-      peerConnections.clear();
-
-      remoteVideos.forEach((element) => {
-        element.remove();
-      });
-      remoteVideos.clear();
-
-      joinBtn.disabled = false;
-      leaveBtn.disabled = true;
-      updateStatus('Left call');
-    }
-
-    startBtn.addEventListener('click', startCamera);
-    joinBtn.addEventListener('click', joinCall);
-    leaveBtn.addEventListener('click', leaveCall);
-  </script>
-</body>
-</html>
+    const userLabel = document.getElementById('
