@@ -1,43 +1,46 @@
-import express from "express";
-import { createServer } from "http";
-import { Server } from "socket.io";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+const path = require("path");
 
 const app = express();
-const server = createServer(app);
+const server = http.createServer(app);
 const io = new Server(server);
+
+const PORT = process.env.PORT || 10000; // Render needs this
 
 app.use(express.static(path.join(__dirname, "public")));
 
-const users = {};
-
 io.on("connection", (socket) => {
-  socket.on("join", (username) => {
-    users[socket.id] = username;
-    io.emit("users", users);
-  });
+  console.log("✅ User connected");
 
-  socket.on("call-user", (targetId) => {
-    io.to(targetId).emit("incoming-call", socket.id);
+  socket.on("join", (username) => {
+    socket.username = username;
+    const users = Array.from(io.sockets.sockets.values())
+      .map((s) => s.username)
+      .filter(Boolean);
+    io.emit("userList", users);
   });
 
   socket.on("offer", (data) => {
-    io.to(data.target).emit("offer", { sdp: data.sdp, from: socket.id });
+    socket.to(data.to).emit("offer", data);
   });
 
   socket.on("answer", (data) => {
-    io.to(data.target).emit("answer", { sdp: data.sdp, from: socket.id });
+    socket.to(data.to).emit("answer", data);
+  });
+
+  socket.on("candidate", (data) => {
+    socket.to(data.to).emit("candidate", data);
   });
 
   socket.on("disconnect", () => {
-    delete users[socket.id];
-    io.emit("users", users);
+    const users = Array.from(io.sockets.sockets.values())
+      .map((s) => s.username)
+      .filter(Boolean);
+    io.emit("userList", users);
+    console.log("❌ User disconnected");
   });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
