@@ -7,40 +7,13 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-const PORT = process.env.PORT || 10000; // Render needs this
-
+// Serve your front-end (this makes your HTML/CSS/JS show up again)
 app.use(express.static(path.join(__dirname, "public")));
 
 io.on("connection", (socket) => {
-  console.log("✅ User connected");
-
-  socket.on("join", (username) => {
-    socket.username = username;
-    const users = Array.from(io.sockets.sockets.values())
-      .map((s) => s.username)
-      .filter(Boolean);
-    io.emit("userList", users);
-  });
-
-  socket.on("offer", (data) => {
-    socket.to(data.to).emit("offer", data);
-  });
-
-  socket.on("answer", (data) => {
-    socket.to(data.to).emit("answer", data);
-  });
-
-  socket.on("candidate", (data) => {
-    socket.to(data.to).emit("candidate", data);
-  });
-
-  socket.on("disconnect", () => {
-    const users = Array.from(io.sockets.sockets.values())
-      .map((s) => s.username)
-      .filter(Boolean);
-    io.emit("userList", users);
-    console.log("❌ User disconnected");
-  });
+  console.log("a user connected");
+  socket.on("disconnect", () => console.log("user disconnected"));
 });
 
-server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
