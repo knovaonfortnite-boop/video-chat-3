@@ -6,117 +6,70 @@
   <title>Video Chat</title>
   <style>
     body {
-      margin: 0;
-      background: #0a0a0a;
+      background: #000;
       color: #fff;
-      font-family: Arial, sans-serif;
-      overflow: hidden;
-    }
-    #topBar {
+      margin: 0;
+      font-family: sans-serif;
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 10px 15px;
-      background: #111;
-      border-bottom: 1px solid #222;
     }
-    #username {
-      padding: 6px 10px;
-      border-radius: 5px;
-      border: none;
-      outline: none;
-      font-size: 14px;
-    }
-    #setNameBtn {
-      padding: 6px 10px;
-      border: none;
-      background: #00ff99;
-      color: #000;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    #onlineBtn {
-      background: #222;
-      color: #00ff99;
-      padding: 6px 10px;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    #videoContainer {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 80vh;
-    }
-    video {
-      width: 600px;
-      max-width: 90%;
-      border-radius: 10px;
-      background: #111;
-    }
-    #startBtn {
-      padding: 10px 20px;
-      border: none;
-      background: #00ff99;
-      color: #000;
-      border-radius: 5px;
-      cursor: pointer;
-      font-size: 16px;
-      margin-top: 10px;
-    }
-    #status {
-      text-align: center;
-      color: #aaa;
-      margin: 5px 0 15px 0;
-    }
-    #onlineList {
-      position: fixed;
-      top: 0;
-      right: -250px;
+    #sidebar {
       width: 250px;
-      height: 100%;
-      background: #111;
-      border-left: 1px solid #222;
+      background: rgba(255, 255, 255, 0.1);
       padding: 15px;
-      transition: right 0.3s;
+      display: none;
+      flex-direction: column;
       overflow-y: auto;
     }
-    #onlineList.show {
-      right: 0;
+    #toggleSidebar {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: #3b82f6;
+      border: none;
+      color: white;
+      padding: 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: 600;
     }
-    #onlineList h3 {
-      color: #00ff99;
-      margin-bottom: 10px;
+    #container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
-    .userItem {
-      padding: 6px 0;
-      border-bottom: 1px solid #222;
+    .videos {
+      display: flex;
+      gap: 20px;
+    }
+    video {
+      width: 300px;
+      height: 200px;
+      border-radius: 10px;
+      background: #222;
+      object-fit: cover;
+    }
+    #status {
+      margin-top: 15px;
     }
   </style>
 </head>
 <body>
-  <div id="topBar">
-    <div>
-      <input id="username" type="text" placeholder="Enter name..." />
-      <button id="setNameBtn">Set</button>
+  <button id="toggleSidebar">Online</button>
+
+  <div id="sidebar"></div>
+
+  <div id="container">
+    <div class="videos">
+      <video id="localVideo" autoplay muted playsinline></video>
+      <video id="remoteVideo" autoplay playsinline></video>
     </div>
     <div>
-      <button id="onlineBtn">👥 Online</button>
+      <button id="startCamBtn">Start Camera</button>
+      <button id="toggleCamBtn" disabled>Turn Camera Off</button>
     </div>
-  </div>
-
-  <div id="videoContainer">
-    <video id="localVideo" autoplay playsinline></video>
-  </div>
-  <div id="status">Disconnected from server</div>
-  <div style="text-align:center;">
-    <button id="startBtn">Start Camera</button>
-  </div>
-
-  <div id="onlineList">
-    <h3>Online Users</h3>
-    <div id="users"></div>
+    <p id="status">Not connected</p>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
