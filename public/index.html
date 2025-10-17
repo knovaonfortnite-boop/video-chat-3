@@ -1,227 +1,53 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Video Chat</title>
   <style>
     body {
-      background: #000;
-      color: white;
-      font-family: system-ui, sans-serif;
-      text-align: center;
       margin: 0;
-      padding: 0;
+      background: #0a0a0a;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      text-align: center;
     }
-    .video-container {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 10px;
-      margin: 20px;
-    }
-    .video-wrapper {
-      position: relative;
-      background: #222;
-      border-radius: 8px;
-      overflow: hidden;
-      aspect-ratio: 16 / 9;
+    #videoContainer {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 90vh;
     }
     video {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
+      width: 600px;
+      max-width: 90%;
+      border-radius: 10px;
+      background: #111;
     }
-    .video-label {
-      position: absolute;
-      bottom: 8px;
-      left: 8px;
-      background: rgba(0,0,0,0.6);
-      padding: 4px 8px;
-      border-radius: 4px;
-    }
-    .controls {
-      margin: 10px;
-    }
-    button {
-      margin: 5px;
-      padding: 10px 15px;
+    #startBtn {
+      padding: 10px 20px;
       border: none;
-      border-radius: 6px;
-      font-weight: 600;
+      background: #00ff99;
+      color: #000;
+      border-radius: 5px;
       cursor: pointer;
+      font-size: 16px;
     }
-    #startBtn { background: #10b981; color: white; }
-    #joinBtn { background: #3b82f6; color: white; }
-    #leaveBtn { background: #ef4444; color: white; }
-    #toggleCamBtn { background: #6b7280; color: white; }
-    #status { margin-top: 10px; font-size: 15px; }
+    #status {
+      margin-top: 10px;
+      color: #aaa;
+    }
   </style>
 </head>
 <body>
-  <div class="video-container" id="videoContainer">
-    <div class="video-wrapper" id="localWrapper">
-      <video id="localVideo" autoplay muted playsinline></video>
-      <div class="video-label" id="localLabel">You</div>
-    </div>
+  <h1>Video Chat</h1>
+  <div id="videoContainer">
+    <video id="localVideo" autoplay playsinline></video>
   </div>
+  <button id="startBtn">Start Camera</button>
+  <div id="status">Disconnected from server</div>
 
-  <div class="controls">
-    <button id="startBtn">Start Camera</button>
-    <button id="joinBtn" disabled>Join Call</button>
-    <button id="leaveBtn" disabled>Leave Call</button>
-    <button id="toggleCamBtn" disabled>Turn Camera Off</button>
-  </div>
-
-  <div id="status">Click “Start Camera” to begin.</div>
-
-  <script>
-    const videoContainer = document.getElementById('videoContainer');
-    const localVideo = document.getElementById('localVideo');
-    const localLabel = document.getElementById('localLabel');
-    const localWrapper = document.getElementById('localWrapper');
-    const startBtn = document.getElementById('startBtn');
-    const joinBtn = document.getElementById('joinBtn');
-    const leaveBtn = document.getElementById('leaveBtn');
-    const toggleCamBtn = document.getElementById('toggleCamBtn');
-    const status = document.getElementById('status');
-
-    let localStream, ws, myId;
-    let peerConnections = new Map();
-    let camOn = true;
-
-    const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-
-    function updateStatus(msg) { status.textContent = msg; }
-
-    startBtn.onclick = async () => {
-      const username = prompt("Enter your name:");
-      if (!username) return;
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localVideo.srcObject = localStream;
-        localLabel.textContent = username;
-        startBtn.disabled = true;
-        toggleCamBtn.disabled = false;
-        updateStatus("Camera started. Connecting...");
-        connectWebSocket();
-      } catch {
-        updateStatus("Camera or mic access denied.");
-      }
-    };
-
-    toggleCamBtn.onclick = () => {
-      camOn = !camOn;
-      localStream.getVideoTracks()[0].enabled = camOn;
-      toggleCamBtn.textContent = camOn ? "Turn Camera Off" : "Turn Camera On";
-      localVideo.style.display = camOn ? 'block' : 'none';
-      if (!camOn) {
-        localWrapper.style.background = '#' + Math.floor(Math.random() * 16777215).toString(16);
-      } else {
-        localWrapper.style.background = '#000';
-      }
-    };
-
-    function connectWebSocket() {
-      ws = new WebSocket(`wss://${window.location.host}`);
-      ws.onopen = () => updateStatus("Connected to server");
-      ws.onclose = () => updateStatus("Disconnected from server");
-      ws.onerror = () => updateStatus("WebSocket error");
-
-      ws.onmessage = async (e) => {
-        const msg = JSON.parse(e.data);
-        switch (msg.type) {
-          case 'welcome':
-            myId = msg.id;
-            joinBtn.disabled = false;
-            break;
-          case 'offer': await handleOffer(msg.offer, msg.from); break;
-          case 'answer': await handleAnswer(msg.answer, msg.from); break;
-          case 'ice-candidate': await handleCandidate(msg.candidate, msg.from); break;
-          case 'participant-left': removePeer(msg.id); break;
-        }
-      };
-    }
-
-    async function createPeer(peerId, initiator = false) {
-      const pc = new RTCPeerConnection(config);
-      peerConnections.set(peerId, pc);
-
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-      pc.ontrack = e => addRemoteVideo(peerId, e.streams[0]);
-      pc.onicecandidate = e => {
-        if (e.candidate) ws.send(JSON.stringify({ type: 'ice-candidate', candidate: e.candidate, to: peerId }));
-      };
-
-      if (initiator) {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        ws.send(JSON.stringify({ type: 'offer', offer, to: peerId }));
-      }
-    }
-
-    async function handleOffer(offer, from) {
-      const pc = new RTCPeerConnection(config);
-      peerConnections.set(from, pc);
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-      pc.ontrack = e => addRemoteVideo(from, e.streams[0]);
-      pc.onicecandidate = e => {
-        if (e.candidate) ws.send(JSON.stringify({ type: 'ice-candidate', candidate: e.candidate, to: from }));
-      };
-      await pc.setRemoteDescription(offer);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      ws.send(JSON.stringify({ type: 'answer', answer, to: from }));
-    }
-
-    async function handleAnswer(answer, from) {
-      const pc = peerConnections.get(from);
-      if (pc) await pc.setRemoteDescription(answer);
-    }
-
-    async function handleCandidate(candidate, from) {
-      const pc = peerConnections.get(from);
-      if (pc) await pc.addIceCandidate(candidate);
-    }
-
-    function addRemoteVideo(id, stream) {
-      if (document.getElementById(`vid-${id}`)) return;
-      const wrap = document.createElement('div');
-      wrap.className = 'video-wrapper';
-      wrap.id = `vid-${id}`;
-      const vid = document.createElement('video');
-      vid.autoplay = true;
-      vid.playsInline = true;
-      vid.srcObject = stream;
-      const label = document.createElement('div');
-      label.className = 'video-label';
-      label.textContent = `User ${id.substring(0, 4)}`;
-      wrap.appendChild(vid);
-      wrap.appendChild(label);
-      videoContainer.appendChild(wrap);
-    }
-
-    function removePeer(id) {
-      const el = document.getElementById(`vid-${id}`);
-      if (el) el.remove();
-      peerConnections.delete(id);
-    }
-
-    joinBtn.onclick = () => {
-      ws.send(JSON.stringify({ type: "join" }));
-      joinBtn.disabled = true;
-      leaveBtn.disabled = false;
-      updateStatus("Joined call");
-    };
-
-    leaveBtn.onclick = () => {
-      ws.send(JSON.stringify({ type: "leave" }));
-      peerConnections.forEach(pc => pc.close());
-      peerConnections.clear();
-      document.querySelectorAll('[id^=vid-]').forEach(el => el.remove());
-      joinBtn.disabled = false;
-      leaveBtn.disabled = true;
-      updateStatus("Left call");
-    };
-  </script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
