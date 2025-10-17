@@ -7,13 +7,43 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Serve your front-end (this makes your HTML/CSS/JS show up again)
 app.use(express.static(path.join(__dirname, "public")));
 
+let users = {}; // username: socket.id
+
 io.on("connection", (socket) => {
-  console.log("a user connected");
-  socket.on("disconnect", () => console.log("user disconnected"));
+  let username = `User-${Math.floor(Math.random() * 1000)}`;
+  users[socket.id] = username;
+
+  io.emit("update-user-list", Object.values(users));
+
+  socket.on("offer", (data) => {
+    io.to(data.target).emit("offer", {
+      offer: data.offer,
+      sender: socket.id,
+      username: users[socket.id],
+    });
+  });
+
+  socket.on("answer", (data) => {
+    io.to(data.target).emit("answer", {
+      answer: data.answer,
+      sender: socket.id,
+    });
+  });
+
+  socket.on("ice-candidate", (data) => {
+    io.to(data.target).emit("ice-candidate", {
+      candidate: data.candidate,
+      sender: socket.id,
+    });
+  });
+
+  socket.on("disconnect", () => {
+    delete users[socket.id];
+    io.emit("update-user-list", Object.values(users));
+  });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
