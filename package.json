@@ -1,14 +1,13 @@
 {
-  "name": "video-chat-server",
+  "name": "video-chat",
   "version": "1.0.0",
   "main": "server.js",
+  "type": "commonjs",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "ws": "^8.13.0"
-  },
-  "engines": {
-    "node": "22.x"
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
   }
 }
