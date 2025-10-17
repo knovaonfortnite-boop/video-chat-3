@@ -10,13 +10,44 @@
       background: #0a0a0a;
       color: #fff;
       font-family: Arial, sans-serif;
-      text-align: center;
+      overflow: hidden;
+    }
+    #topBar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 15px;
+      background: #111;
+      border-bottom: 1px solid #222;
+    }
+    #username {
+      padding: 6px 10px;
+      border-radius: 5px;
+      border: none;
+      outline: none;
+      font-size: 14px;
+    }
+    #setNameBtn {
+      padding: 6px 10px;
+      border: none;
+      background: #00ff99;
+      color: #000;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #onlineBtn {
+      background: #222;
+      color: #00ff99;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
     }
     #videoContainer {
       display: flex;
       justify-content: center;
       align-items: center;
-      height: 90vh;
+      height: 80vh;
     }
     video {
       width: 600px;
@@ -32,20 +63,61 @@
       border-radius: 5px;
       cursor: pointer;
       font-size: 16px;
+      margin-top: 10px;
     }
     #status {
-      margin-top: 10px;
+      text-align: center;
       color: #aaa;
+      margin: 5px 0 15px 0;
+    }
+    #onlineList {
+      position: fixed;
+      top: 0;
+      right: -250px;
+      width: 250px;
+      height: 100%;
+      background: #111;
+      border-left: 1px solid #222;
+      padding: 15px;
+      transition: right 0.3s;
+      overflow-y: auto;
+    }
+    #onlineList.show {
+      right: 0;
+    }
+    #onlineList h3 {
+      color: #00ff99;
+      margin-bottom: 10px;
+    }
+    .userItem {
+      padding: 6px 0;
+      border-bottom: 1px solid #222;
     }
   </style>
 </head>
 <body>
-  <h1>Video Chat</h1>
+  <div id="topBar">
+    <div>
+      <input id="username" type="text" placeholder="Enter name..." />
+      <button id="setNameBtn">Set</button>
+    </div>
+    <div>
+      <button id="onlineBtn">👥 Online</button>
+    </div>
+  </div>
+
   <div id="videoContainer">
     <video id="localVideo" autoplay playsinline></video>
   </div>
-  <button id="startBtn">Start Camera</button>
   <div id="status">Disconnected from server</div>
+  <div style="text-align:center;">
+    <button id="startBtn">Start Camera</button>
+  </div>
+
+  <div id="onlineList">
+    <h3>Online Users</h3>
+    <div id="users"></div>
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="script.js"></script>
