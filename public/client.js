@@ -3,9 +3,12 @@ let localStream = null;
 let pcs = {};
 let myId = null;
 let myName = prompt("Enter your name:") || "You";
-let socket = new WebSocket(`ws://${window.location.hostname}:${window.location.port}`);
 
-// -------------------- SOCKET HANDLING --------------------
+// Replace hostname with your PC's local IP if testing on phone
+// Example: ws://192.168.1.5:10000
+let socket = new WebSocket(`ws://${window.location.hostname}:10000`);
+
+// -------------------- SOCKET --------------------
 socket.addEventListener("message", async (ev) => {
   const msg = JSON.parse(ev.data);
 
@@ -42,16 +45,12 @@ socket.addEventListener("message", async (ev) => {
 // -------------------- CAMERA --------------------
 async function startCamera() {
   const videoEl = document.getElementById("localVideo");
-  if (!videoEl) return alert("Video element not found.");
+  videoEl.muted = true;
+  videoEl.autoplay = true;
+  videoEl.playsInline = true;
 
   try {
-    // Chromebook fix
-    videoEl.muted = true;
-    videoEl.autoplay = true;
-    videoEl.playsInline = true;
-
     await new Promise(resolve => setTimeout(resolve, 200));
-
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     videoEl.srcObject = localStream;
     await videoEl.play();
@@ -60,15 +59,13 @@ async function startCamera() {
     document.getElementById("hangupBtn").disabled = false;
 
     showLocalNameOverlay(myName);
-
-    console.log("✅ Camera started on Chromebook!");
   } catch (err) {
     console.error("Camera error:", err);
-    alert("Camera failed! Make sure no other app is using it, and reload the page.");
+    alert("Camera failed! Make sure no other app is using it.");
   }
 }
 
-// -------------------- TOGGLE CAMERA --------------------
+// -------------------- TOGGLE / HANGUP --------------------
 function toggleCamera() {
   if (!localStream) return;
   const track = localStream.getVideoTracks()[0];
@@ -78,7 +75,6 @@ function toggleCamera() {
   if (overlay) overlay.style.display = track.enabled ? "none" : "flex";
 }
 
-// -------------------- HANG UP --------------------
 function hangUp() {
   for (let id in pcs) {
     pcs[id].close();
@@ -113,10 +109,6 @@ function createPeerConnection(remoteId, isOffer, remoteName = "Someone") {
       videoEl.playsInline = true;
       videoEl.srcObject = e.streams[0];
 
-      const label = document.createElement("div");
-      label.className = "labelOverlay";
-      label.innerText = "";
-
       const nameOverlay = document.createElement("div");
       nameOverlay.id = `remote_${remoteId}_name`;
       nameOverlay.className = "nameBox";
@@ -124,14 +116,8 @@ function createPeerConnection(remoteId, isOffer, remoteName = "Someone") {
       nameOverlay.style.display = "none";
 
       box.appendChild(videoEl);
-      box.appendChild(label);
       box.appendChild(nameOverlay);
       container.appendChild(box);
-
-      const videoTrack = e.streams[0].getVideoTracks()[0];
-      if (!videoTrack.enabled) nameOverlay.style.display = "flex";
-      videoTrack.onmute = () => nameOverlay.style.display = "flex";
-      videoTrack.onunmute = () => nameOverlay.style.display = "none";
     }
   };
 
@@ -140,7 +126,7 @@ function createPeerConnection(remoteId, isOffer, remoteName = "Someone") {
   return pc;
 }
 
-// -------------------- LOCAL NAME OVERLAY --------------------
+// -------------------- LOCAL NAME --------------------
 function showLocalNameOverlay(name) {
   let overlay = document.getElementById("localBox_name");
   if (!overlay) {
@@ -150,7 +136,7 @@ function showLocalNameOverlay(name) {
     overlay.innerText = name;
     document.getElementById("localBox").appendChild(overlay);
   }
-  overlay.style.display = "none"; // hidden when camera is on
+  overlay.style.display = "none";
 }
 
 // -------------------- USER LIST --------------------
@@ -185,7 +171,7 @@ async function startCall(remoteId, remoteName) {
   alert(`Calling ${remoteName}...`);
 }
 
-// -------------------- ATTACH BUTTONS --------------------
+// -------------------- BUTTONS --------------------
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("startBtn").addEventListener("click", startCamera);
   document.getElementById("toggleCamBtn").addEventListener("click", toggleCamera);
