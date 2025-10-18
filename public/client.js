@@ -2,42 +2,60 @@ let localStream;
 let pcs = {};
 let myId;
 let myName = prompt("Enter your name") || "You";
+let socket;
+let reconnectInterval;
 
-const socket = new WebSocket(`ws://${window.location.hostname}:10000`);
+function connectWS() {
+  socket = new WebSocket(`ws://${window.location.hostname}:10000`);
 
-// --- WebSocket events ---
-socket.onopen = () => console.log("Connected to WebSocket");
+  socket.onopen = () => {
+    console.log("WS connected");
+    clearInterval(reconnectInterval); // stop reconnect attempts
+    if (myId) socket.send(JSON.stringify({ type: "join", name: myName }));
+  };
 
-socket.onmessage = async (ev) => {
-  const msg = JSON.parse(ev.data);
+  socket.onmessage = async (ev) => {
+    const msg = JSON.parse(ev.data);
 
-  if (msg.type === "welcome") {
-    myId = msg.id;
-    socket.send(JSON.stringify({ type: "join", name: myName }));
-    renderUsers(msg.users || []);
-  }
+    if (msg.type === "welcome") {
+      myId = msg.id;
+      socket.send(JSON.stringify({ type: "join", name: myName }));
+      renderUsers(msg.users || []);
+    }
 
-  if (msg.type === "user-list") renderUsers(msg.users || []);
+    if (msg.type === "user-list") renderUsers(msg.users || []);
 
-  if (msg.type === "offer") {
-    const pc = createPeerConnection(msg.from, false, msg.fromName);
-    pcs[msg.from] = pc;
-    await pc.setRemoteDescription(msg.sdp);
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    socket.send(JSON.stringify({ type: "answer", to: msg.from, sdp: pc.localDescription }));
-  }
+    if (msg.type === "offer") {
+      const pc = createPeerConnection(msg.from, false, msg.fromName);
+      pcs[msg.from] = pc;
+      await pc.setRemoteDescription(msg.sdp);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socket.send(JSON.stringify({ type: "answer", to: msg.from, sdp: pc.localDescription }));
+    }
 
-  if (msg.type === "answer") {
-    const pc = pcs[msg.from];
-    if (pc) await pc.setRemoteDescription(msg.sdp);
-  }
+    if (msg.type === "answer") {
+      const pc = pcs[msg.from];
+      if (pc) await pc.setRemoteDescription(msg.sdp);
+    }
 
-  if (msg.type === "ice-candidate") {
-    const pc = pcs[msg.from];
-    if (pc) await pc.addIceCandidate(msg.candidate);
-  }
-};
+    if (msg.type === "ice-candidate") {
+      const pc = pcs[msg.from];
+      if (pc) await pc.addIceCandidate(msg.candidate);
+    }
+  };
+
+  socket.onclose = () => {
+    console.log("WS disconnected");
+    alert("⚠️ You got disconnected from the server. Reconnecting...");
+    reconnectInterval = setInterval(connectWS, 3000); // try reconnect every 3 sec
+  };
+
+  socket.onerror = (err) => {
+    console.log("WS error", err);
+    socket.close();
+  };
+}
 
 // --- Camera functions ---
 async function startCamera() {
@@ -47,7 +65,7 @@ async function startCamera() {
     document.getElementById("toggleCamBtn").disabled = false;
     document.getElementById("hangupBtn").disabled = false;
   } catch (err) {
-    alert("Camera failed. Make sure the page is served via LAN IP and not file:// or localhost.");
+    alert("Camera failed. Serve via LAN IP and reload.");
   }
 }
 
@@ -132,3 +150,6 @@ function hangUp() {
 document.getElementById("startBtn").onclick = startCamera;
 document.getElementById("toggleCamBtn").onclick = toggleCamera;
 document.getElementById("hangupBtn").onclick = hangUp;
+
+// --- Start WebSocket connection ---
+connectWS();
