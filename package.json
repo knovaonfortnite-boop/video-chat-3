@@ -1,5 +1,5 @@
 {
-  "name": "video-chat",
+  "name": "video-chat-3",
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
@@ -7,6 +7,6 @@
   },
   "dependencies": {
     "express": "^4.18.2",
-    "socket.io": "^4.7.2"
+    "ws": "^8.17.0"
   }
 }
