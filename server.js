@@ -1,4 +1,4 @@
-// ✅ Basic Express + WebSocket Server (Render compatible)
+// server.js
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
@@ -10,72 +10,94 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname, "public")));
 
-let users = {}; // id: { name, ws }
+const users = new Map(); // id -> { ws, name }
 
-// Generate random ID
 function genId() {
-  return Math.random().toString(36).substr(2, 9);
+  return Math.random().toString(36).slice(2, 10);
+}
+
+function broadcastUserList() {
+  const list = Array.from(users.entries()).map(([id, u]) => ({ id, name: u.name }));
+  const msg = JSON.stringify({ type: "user-list", users: list });
+  for (const [, u] of users) {
+    if (u.ws.readyState === WebSocket.OPEN) u.ws.send(msg);
+  }
 }
 
 wss.on("connection", (ws) => {
   const id = genId();
-  users[id] = { name: "User" + id.substring(0, 4), ws };
+  users.set(id, { ws, name: `User-${id.slice(0,4)}` });
 
-  // Send welcome + full user list
-  ws.send(JSON.stringify({
-    type: "welcome",
-    id,
-    users: Object.entries(users).map(([uid, u]) => ({ id: uid, name: u.name }))
-  }));
+  // send welcome (id + current users)
+  const current = Array.from(users.entries()).map(([uid, u]) => ({ id: uid, name: u.name }));
+  ws.send(JSON.stringify({ type: "welcome", id, users: current }));
 
-  // Broadcast update when someone joins
-  broadcastUsers();
+  // notify everyone of updated list
+  broadcastUserList();
 
-  ws.on("message", (data) => {
-    try {
-      const msg = JSON.parse(data);
+  ws.on("message", (raw) => {
+    let data;
+    try { data = JSON.parse(raw); } catch (e) { return; }
 
-      // Set username
-      if (msg.type === "join") {
-        users[id].name = msg.name;
-        broadcastUsers();
+    // set name
+    if (data.type === "join") {
+      const rec = users.get(id);
+      if (rec) {
+        rec.name = data.name || rec.name;
+        broadcastUserList();
       }
+    }
 
-      // Handle call initiation
-      if (msg.type === "call") {
-        const target = users[msg.to];
-        if (target) {
-          target.ws.send(JSON.stringify({
-            type: "call-offer",
-            from: id,
-            fromName: users[id].name
-          }));
-        }
-      }
+    // offer/answer/ice-candidate are relayed to target
+    if (data.type === "offer" && data.to && users.has(data.to)) {
+      const target = users.get(data.to);
+      target.ws.send(JSON.stringify({
+        type: "offer",
+        from: id,
+        fromName: users.get(id).name,
+        sdp: data.sdp
+      }));
+    }
 
-    } catch (err) {
-      console.error("Error handling message:", err);
+    if (data.type === "answer" && data.to && users.has(data.to)) {
+      const target = users.get(data.to);
+      target.ws.send(JSON.stringify({
+        type: "answer",
+        from: id,
+        sdp: data.sdp
+      }));
+    }
+
+    if (data.type === "ice-candidate" && data.to && users.has(data.to)) {
+      const target = users.get(data.to);
+      target.ws.send(JSON.stringify({
+        type: "ice-candidate",
+        from: id,
+        candidate: data.candidate
+      }));
+    }
+
+    // simple call ping (for UI) - optional
+    if (data.type === "call" && data.to && users.has(data.to)) {
+      const target = users.get(data.to);
+      target.ws.send(JSON.stringify({
+        type: "incoming-call",
+        from: id,
+        fromName: users.get(id).name
+      }));
+    }
+
+    // hangup relay
+    if (data.type === "hangup" && data.to && users.has(data.to)) {
+      users.get(data.to).ws.send(JSON.stringify({ type: "hangup", from: id }));
     }
   });
 
   ws.on("close", () => {
-    delete users[id];
-    broadcastUsers();
+    users.delete(id);
+    broadcastUserList();
   });
 });
 
-// Broadcast all online users
-function broadcastUsers() {
-  const data = JSON.stringify({
-    type: "update-users",
-    users: Object.entries(users).map(([uid, u]) => ({ id: uid, name: u.name }))
-  });
-  for (let u of Object.values(users)) {
-    if (u.ws.readyState === WebSocket.OPEN) {
-      u.ws.send(data);
-    }
-  }
-}
-
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
