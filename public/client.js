@@ -1,71 +1,97 @@
-const socket = io();
-let localStream;
-let peerConnection;
-const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+const ws = new WebSocket("wss://video-chat-3-8.onrender.com");
 
-const usernameInput = document.getElementById("username");
-const joinBtn = document.getElementById("joinBtn");
-const usersDiv = document.getElementById("users");
+const userList = document.getElementById("userList");
+const startBtn = document.getElementById("startBtn");
+const toggleCamBtn = document.getElementById("toggleCamBtn");
 const localVideo = document.getElementById("localVideo");
-const remoteVideo = document.getElementById("remoteVideo");
+const localWrapper = document.getElementById("localWrapper");
+const status = document.getElementById("status");
 
-joinBtn.onclick = async () => {
-  const username = usernameInput.value.trim();
-  if (!username) return alert("Enter a username!");
-  socket.emit("join", username);
-  localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-  localVideo.srcObject = localStream;
+let myId = null;
+let myName = null;
+let localStream = null;
+let camOn = true;
+
+// Generate a random color (for camera off)
+function randomColor() {
+  return "#" + Math.floor(Math.random() * 16777215).toString(16);
+}
+
+// Update status
+function updateStatus(msg) {
+  status.textContent = msg;
+}
+
+// WebSocket messages
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+
+  switch (msg.type) {
+    case "welcome":
+      myId = msg.id;
+      updateStatus(`Connected - ID: ${myId}`);
+      renderUserList(msg.users);
+      break;
+
+    case "update-users":
+      renderUserList(msg.users);
+      break;
+
+    case "call-offer":
+      alert(`${msg.fromName} is calling you!`);
+      break;
+  }
 };
 
-socket.on("users", (users) => {
-  usersDiv.innerHTML = "<h3>Online Users:</h3>";
-  Object.entries(users).forEach(([id, name]) => {
-    if (id === socket.id) return;
-    const btn = document.createElement("button");
-    btn.textContent = name;
-    btn.onclick = () => callUser(id);
-    usersDiv.appendChild(btn);
+// Render all online users
+function renderUserList(users) {
+  userList.innerHTML = "";
+  users.forEach((u) => {
+    if (u.id === myId) return; // skip self
+    const li = document.createElement("li");
+    li.textContent = u.name;
+    li.style.cursor = "pointer";
+    li.onclick = () => {
+      ws.send(JSON.stringify({ type: "call", to: u.id }));
+      alert(`Calling ${u.name}...`);
+    };
+    userList.appendChild(li);
   });
-});
-
-socket.on("incoming-call", async (fromId) => {
-  await startCall(fromId, false);
-});
-
-socket.on("offer", async ({ sdp, from }) => {
-  if (!peerConnection) await startCall(from, false);
-  await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
-  const answer = await peerConnection.createAnswer();
-  await peerConnection.setLocalDescription(answer);
-  socket.emit("answer", { sdp: answer, target: from });
-});
-
-socket.on("answer", async ({ sdp }) => {
-  await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
-});
-
-async function callUser(id) {
-  await startCall(id, true);
 }
 
-async function startCall(targetId, isCaller) {
-  peerConnection = new RTCPeerConnection(config);
+// Start camera and join server
+startBtn.onclick = async () => {
+  myName = prompt("Enter your name:");
+  if (!myName) return alert("You must enter a name!");
 
-  peerConnection.ontrack = (event) => {
-    remoteVideo.srcObject = event.streams[0];
-  };
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localVideo.srcObject = localStream;
+    startBtn.disabled = true;
+    toggleCamBtn.disabled = false;
 
-  localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
-
-  peerConnection.onicecandidate = (event) => {
-    if (event.candidate) return;
-    if (isCaller) {
-      socket.emit("offer", { sdp: peerConnection.localDescription, target: targetId });
-    }
-  };
-
-  if (isCaller) {
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
+    ws.send(JSON.stringify({ type: "join", name: myName }));
+    updateStatus("Camera started and connected!");
+  } catch (err) {
+    console.error(err);
+    updateStatus("Error: Could not start camera");
   }
-}
+};
+
+// Toggle camera
+toggleCamBtn.onclick = () => {
+  if (!localStream) return;
+  camOn = !camOn;
+  localStream.getVideoTracks()[0].enabled = camOn;
+  toggleCamBtn.textContent = camOn ? "Turn Camera Off" : "Turn Camera On";
+
+  if (!camOn) {
+    localVideo.style.display = "none";
+    localWrapper.style.background = randomColor();
+    const label = document.getElementById("localLabel");
+    label.textContent = myName || "You";
+  } else {
+    localVideo.style.display = "block";
+    localWrapper.style.background = "#000";
+  }
+};
