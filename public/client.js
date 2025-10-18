@@ -2,19 +2,16 @@
 let localStream = null;
 let pcs = {};
 let myId = null;
-let myName = "You"; // default, will be overwritten
+let myName = "You";
 let socket = new WebSocket(`ws://${window.location.hostname}:${window.location.port}`);
 
 // -------------------- SOCKET HANDLING --------------------
-socket.addEventListener("open", () => console.log("WebSocket connected"));
-
 socket.addEventListener("message", async (ev) => {
   const msg = JSON.parse(ev.data);
 
   if (msg.type === "welcome") {
     myId = msg.id;
     renderUsers(msg.users || []);
-    // Send our name to server
     socket.send(JSON.stringify({ type: "join", name: myName }));
   }
 
@@ -56,11 +53,18 @@ async function startCamera() {
     document.getElementById("toggleCamBtn").disabled = false;
     document.getElementById("hangupBtn").disabled = false;
 
-    showNameOverlay("localBox", myName);
-    console.log("Camera started!");
+    // show name overlay
+    const overlay = document.getElementById("localBox_name");
+    if (!overlay) {
+      const nameBox = document.createElement("div");
+      nameBox.id = "localBox_name";
+      nameBox.className = "nameBox";
+      nameBox.innerText = myName;
+      document.getElementById("localBox").appendChild(nameBox);
+    }
   } catch (err) {
     console.error("Camera error:", err);
-    alert("Camera failed! Check permissions and reload the page.");
+    alert("Camera failed! Check permissions and reload.");
   }
 }
 
@@ -142,24 +146,10 @@ function createPeerConnection(remoteId, isOffer) {
   return pc;
 }
 
-// -------------------- NAME OVERLAY --------------------
-function showNameOverlay(boxId, name) {
-  const box = document.getElementById(boxId);
-  if (!box) return;
-  let overlay = document.getElementById(`${boxId}_name`);
-  if (!overlay) {
-    overlay = document.createElement("div");
-    overlay.id = `${boxId}_name`;
-    overlay.className = "nameBox";
-    overlay.innerText = name;
-    box.appendChild(overlay);
-  }
-  overlay.style.display = "flex";
-}
-
 // -------------------- BUTTON EVENTS --------------------
 window.addEventListener("load", () => {
   myName = prompt("Enter your name:") || "You";
+
   document.getElementById("startBtn").addEventListener("click", startCamera);
   document.getElementById("toggleCamBtn").addEventListener("click", toggleCamera);
   document.getElementById("hangupBtn").addEventListener("click", hangUp);
