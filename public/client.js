@@ -2,7 +2,7 @@
 let localStream = null;
 let pcs = {};
 let myId = null;
-let myName = "You";
+let myName = prompt("Enter your name:") || "You"; // prompt immediately
 let socket = new WebSocket(`ws://${window.location.hostname}:${window.location.port}`);
 
 // -------------------- SOCKET HANDLING --------------------
@@ -15,20 +15,17 @@ socket.addEventListener("message", async (ev) => {
     socket.send(JSON.stringify({ type: "join", name: myName }));
   }
 
-  if (msg.type === "user-list") {
-    renderUsers(msg.users || []);
-  }
+  if (msg.type === "user-list") renderUsers(msg.users || []);
 
   if (msg.type === "offer") {
-    const from = msg.from;
-    const pc = createPeerConnection(from, false);
-    pcs[from] = pc;
+    const pc = createPeerConnection(msg.from, false);
+    pcs[msg.from] = pc;
     await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
 
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
 
-    socket.send(JSON.stringify({ type: "answer", to: from, sdp: pc.localDescription }));
+    socket.send(JSON.stringify({ type: "answer", to: msg.from, sdp: pc.localDescription }));
   }
 
   if (msg.type === "answer") {
@@ -48,48 +45,41 @@ async function startCamera() {
   if (!videoEl) return alert("Video element not found.");
 
   try {
-    // Slight delay to ensure Chromebook initializes video properly
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, 100)); // Chromebook fix
 
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     videoEl.srcObject = localStream;
-
-    // Wait until the video element is ready
     await videoEl.play();
 
     document.getElementById("toggleCamBtn").disabled = false;
     document.getElementById("hangupBtn").disabled = false;
 
-    // Show name overlay
     let overlay = document.getElementById("localBox_name");
     if (!overlay) {
       overlay = document.createElement("div");
       overlay.id = "localBox_name";
       overlay.className = "nameBox";
-      overlay.innerText = myName || "You";
+      overlay.innerText = myName;
       document.getElementById("localBox").appendChild(overlay);
     }
 
-    console.log("Camera started successfully on Chromebook!");
+    console.log("Camera started on Chromebook!");
   } catch (err) {
     console.error("Camera error:", err);
-    alert("Camera failed! Reload the page and make sure no other app is using it.");
+    alert("Camera failed! Reload page and make sure no other app is using it.");
   }
 }
 
-// -------------------- TOGGLE CAMERA --------------------
+// -------------------- BUTTONS --------------------
 function toggleCamera() {
   if (!localStream) return;
-  const videoTrack = localStream.getVideoTracks()[0];
-  videoTrack.enabled = !videoTrack.enabled;
-
-  document.getElementById("toggleCamBtn").innerText = videoTrack.enabled ? "Turn Camera Off" : "Turn Camera On";
-
+  const track = localStream.getVideoTracks()[0];
+  track.enabled = !track.enabled;
+  document.getElementById("toggleCamBtn").innerText = track.enabled ? "Turn Camera Off" : "Turn Camera On";
   const overlay = document.getElementById("localBox_name");
-  if (overlay) overlay.style.display = videoTrack.enabled ? "none" : "flex";
+  if (overlay) overlay.style.display = track.enabled ? "none" : "flex";
 }
 
-// -------------------- HANG UP --------------------
 function hangUp() {
   for (let id in pcs) {
     pcs[id].close();
@@ -97,22 +87,18 @@ function hangUp() {
     const el = document.getElementById(`remote_${id}`);
     if (el) el.remove();
   }
-  if (localStream) {
-    localStream.getTracks().forEach(track => track.stop());
-    localStream = null;
-  }
+  if (localStream) localStream.getTracks().forEach(t => t.stop());
+  localStream = null;
   document.getElementById("toggleCamBtn").disabled = true;
   document.getElementById("hangupBtn").disabled = true;
 }
 
-// -------------------- PEER CONNECTION --------------------
+// -------------------- PEER --------------------
 function createPeerConnection(remoteId, isOffer) {
   const pc = new RTCPeerConnection();
 
   pc.onicecandidate = e => {
-    if (e.candidate) {
-      socket.send(JSON.stringify({ type: "ice-candidate", to: remoteId, candidate: e.candidate }));
-    }
+    if (e.candidate) socket.send(JSON.stringify({ type: "ice-candidate", to: remoteId, candidate: e.candidate }));
   };
 
   pc.ontrack = e => {
@@ -142,11 +128,6 @@ function createPeerConnection(remoteId, isOffer) {
       box.appendChild(label);
       box.appendChild(nameOverlay);
       container.appendChild(box);
-
-      const videoTrack = e.streams[0].getVideoTracks()[0];
-      if (!videoTrack.enabled) nameOverlay.style.display = "flex";
-      videoTrack.onmute = () => nameOverlay.style.display = "flex";
-      videoTrack.onunmute = () => nameOverlay.style.display = "none";
     }
   };
 
@@ -154,15 +135,6 @@ function createPeerConnection(remoteId, isOffer) {
 
   return pc;
 }
-
-// -------------------- BUTTON EVENTS --------------------
-window.addEventListener("load", () => {
-  myName = prompt("Enter your name:") || "You";
-
-  document.getElementById("startBtn").addEventListener("click", startCamera);
-  document.getElementById("toggleCamBtn").addEventListener("click", toggleCamera);
-  document.getElementById("hangupBtn").addEventListener("click", hangUp);
-});
 
 // -------------------- USER LIST --------------------
 function renderUsers(users) {
@@ -196,3 +168,10 @@ async function startCall(remoteId, remoteName) {
 
   alert(`Calling ${remoteName}...`);
 }
+
+// -------------------- ATTACH BUTTON EVENTS --------------------
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("startBtn").addEventListener("click", startCamera);
+  document.getElementById("toggleCamBtn").addEventListener("click", toggleCamera);
+  document.getElementById("hangupBtn").addEventListener("click", hangUp);
+});
