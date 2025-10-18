@@ -2,58 +2,48 @@
 let localStream = null;
 let pcs = {};
 let myId = null;
-let myName = null; // will be set by user
-let socket = null;
-
-// -------------------- INITIALIZE --------------------
-window.addEventListener("load", () => {
-  myName = prompt("Enter your name:") || "You";
-  socket = new WebSocket(`ws://${window.location.hostname}:${window.location.port}`);
-  setupSocket();
-  setupButtons();
-});
+let myName = "You"; // default, will be overwritten
+let socket = new WebSocket(`ws://${window.location.hostname}:${window.location.port}`);
 
 // -------------------- SOCKET HANDLING --------------------
-function setupSocket() {
-  socket.addEventListener("open", () => console.log("WebSocket connected"));
+socket.addEventListener("open", () => console.log("WebSocket connected"));
 
-  socket.addEventListener("message", async (ev) => {
-    const msg = JSON.parse(ev.data);
+socket.addEventListener("message", async (ev) => {
+  const msg = JSON.parse(ev.data);
 
-    if (msg.type === "welcome") {
-      myId = msg.id;
-      renderUsers(msg.users || []);
-      // send our name to server
-      socket.send(JSON.stringify({ type: "join", name: myName }));
-    }
+  if (msg.type === "welcome") {
+    myId = msg.id;
+    renderUsers(msg.users || []);
+    // Send our name to server
+    socket.send(JSON.stringify({ type: "join", name: myName }));
+  }
 
-    if (msg.type === "user-list") {
-      renderUsers(msg.users || []);
-    }
+  if (msg.type === "user-list") {
+    renderUsers(msg.users || []);
+  }
 
-    if (msg.type === "offer") {
-      const from = msg.from;
-      const pc = createPeerConnection(from, false, msg.fromName);
-      pcs[from] = pc;
-      await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+  if (msg.type === "offer") {
+    const from = msg.from;
+    const pc = createPeerConnection(from, false);
+    pcs[from] = pc;
+    await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
 
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
 
-      socket.send(JSON.stringify({ type: "answer", to: from, sdp: pc.localDescription }));
-    }
+    socket.send(JSON.stringify({ type: "answer", to: from, sdp: pc.localDescription }));
+  }
 
-    if (msg.type === "answer") {
-      const pc = pcs[msg.from];
-      if (pc) await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-    }
+  if (msg.type === "answer") {
+    const pc = pcs[msg.from];
+    if (pc) await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+  }
 
-    if (msg.type === "ice-candidate") {
-      const pc = pcs[msg.from];
-      if (pc) await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
-    }
-  });
-}
+  if (msg.type === "ice-candidate") {
+    const pc = pcs[msg.from];
+    if (pc) await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+  }
+});
 
 // -------------------- CAMERA --------------------
 async function startCamera() {
@@ -103,7 +93,7 @@ function hangUp() {
 }
 
 // -------------------- PEER CONNECTION --------------------
-function createPeerConnection(remoteId, isOffer, remoteName = "Remote") {
+function createPeerConnection(remoteId, isOffer) {
   const pc = new RTCPeerConnection();
 
   pc.onicecandidate = e => {
@@ -127,13 +117,13 @@ function createPeerConnection(remoteId, isOffer, remoteName = "Remote") {
 
       const label = document.createElement("div");
       label.className = "labelOverlay";
-      label.innerText = remoteName;
+      label.innerText = "Remote";
 
       const nameOverlay = document.createElement("div");
       nameOverlay.id = `remote_${remoteId}_name`;
       nameOverlay.className = "nameBox";
-      nameOverlay.innerText = remoteName;
-      nameOverlay.style.display = "none"; // hidden if video plays
+      nameOverlay.innerText = "Remote";
+      nameOverlay.style.display = "none";
 
       box.appendChild(videoEl);
       box.appendChild(label);
@@ -168,11 +158,12 @@ function showNameOverlay(boxId, name) {
 }
 
 // -------------------- BUTTON EVENTS --------------------
-function setupButtons() {
+window.addEventListener("load", () => {
+  myName = prompt("Enter your name:") || "You";
   document.getElementById("startBtn").addEventListener("click", startCamera);
   document.getElementById("toggleCamBtn").addEventListener("click", toggleCamera);
   document.getElementById("hangupBtn").addEventListener("click", hangUp);
-}
+});
 
 // -------------------- USER LIST --------------------
 function renderUsers(users) {
@@ -190,7 +181,7 @@ function renderUsers(users) {
 // -------------------- START CALL --------------------
 async function startCall(remoteId, remoteName) {
   if (!localStream) return alert("Start your camera first.");
-  const pc = createPeerConnection(remoteId, true, remoteName);
+  const pc = createPeerConnection(remoteId, true);
   pcs[remoteId] = pc;
 
   const offer = await pc.createOffer();
