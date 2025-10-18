@@ -1,30 +1,15 @@
-let localStream = null;
+let localStream;
 let pcs = {};
-let myId = null;
-let myName = prompt("Enter your name:") || "You";
-let socket = null;
+let myId;
+let myName = prompt("Enter your name") || "You";
 
-function connectSocket() {
-  socket = new WebSocket(`ws://${window.location.hostname}:10000`);
+const socket = new WebSocket(`ws://${window.location.hostname}:10000`);
 
-  socket.addEventListener("open", () => {
-    console.log("WebSocket connected");
-    if (myId !== null) {
-      socket.send(JSON.stringify({ type: "join", name: myName }));
-    }
-  });
+socket.onopen = () => {
+  console.log("Connected to WS");
+};
 
-  socket.addEventListener("message", handleMessage);
-
-  socket.addEventListener("close", () => {
-    console.warn("Disconnected! Reconnecting...");
-    setTimeout(connectSocket, 2000);
-  });
-
-  socket.addEventListener("error", console.error);
-}
-
-function handleMessage(ev) {
+socket.onmessage = async (ev) => {
   const msg = JSON.parse(ev.data);
 
   if (msg.type === "welcome") {
@@ -38,93 +23,79 @@ function handleMessage(ev) {
   if (msg.type === "offer") {
     const pc = createPeerConnection(msg.from, false, msg.fromName);
     pcs[msg.from] = pc;
-    pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)).then(async () => {
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      socket.send(JSON.stringify({ type: "answer", to: msg.from, sdp: pc.localDescription }));
-    });
+    await pc.setRemoteDescription(msg.sdp);
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    socket.send(JSON.stringify({ type: "answer", to: msg.from, sdp: pc.localDescription }));
   }
 
   if (msg.type === "answer") {
     const pc = pcs[msg.from];
-    if (pc) pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+    if (pc) await pc.setRemoteDescription(msg.sdp);
   }
 
   if (msg.type === "ice-candidate") {
     const pc = pcs[msg.from];
-    if (pc) pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+    if (pc) await pc.addIceCandidate(msg.candidate);
   }
-}
-
-connectSocket();
+};
 
 async function startCamera() {
-  const videoEl = document.getElementById("localVideo");
-  if (!videoEl) return alert("Video element missing");
-
-  videoEl.muted = true;
-  videoEl.autoplay = true;
-  videoEl.playsInline = true;
-
   try {
-    await new Promise(r => setTimeout(r, 400));
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    videoEl.srcObject = localStream;
-    await videoEl.play();
-
+    document.getElementById("localVideo").srcObject = localStream;
     document.getElementById("toggleCamBtn").disabled = false;
     document.getElementById("hangupBtn").disabled = false;
-    showLocalNameOverlay(myName);
   } catch (err) {
-    console.error("Camera error:", err);
-    alert("Camera failed. Make sure no other app is using it.");
+    alert("Camera failed. Make sure the page is served via LAN IP and not localhost.");
   }
 }
 
-function toggleCamera() {
-  if (!localStream) return;
-  const track = localStream.getVideoTracks()[0];
-  track.enabled = !track.enabled;
-  document.getElementById("toggleCamBtn").innerText = track.enabled ? "Turn Camera Off" : "Turn Camera On";
-  const overlay = document.getElementById("localBox_name");
-  if (overlay) overlay.style.display = track.enabled ? "none" : "flex";
-}
-
-function hangUp() {
-  for (let id in pcs) {
-    pcs[id].close();
-    delete pcs[id];
-    const el = document.getElementById(`remote_${id}`);
-    if (el) el.remove();
-  }
-  if (localStream) localStream.getTracks().forEach(t => t.stop());
-  localStream = null;
-  document.getElementById("toggleCamBtn").disabled = true;
-  document.getElementById("hangupBtn").disabled = true;
-}
-
-function createPeerConnection(remoteId, isOffer, remoteName = "Someone") {
+function createPeerConnection(remoteId, isOffer, remoteName="Someone") {
   const pc = new RTCPeerConnection();
-
   pc.onicecandidate = e => {
     if (e.candidate) socket.send(JSON.stringify({ type: "ice-candidate", to: remoteId, candidate: e.candidate }));
   };
 
   pc.ontrack = e => {
-    let box = document.getElementById(`remote_${remoteId}`);
-    if (!box) {
-      const container = document.getElementById("videoContainer");
-      box = document.createElement("div");
-      box.className = "videoBox";
-      box.id = `remote_${remoteId}`;
+    let vid = document.createElement("video");
+    vid.autoplay = true;
+    vid.playsInline = true;
+    vid.srcObject = e.streams[0];
+    document.getElementById("videoContainer").appendChild(vid);
+  };
 
-      const videoEl = document.createElement("video");
-      videoEl.autoplay = true;
-      videoEl.playsInline = true;
-      videoEl.srcObject = e.streams[0];
+  if (localStream) localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  return pc;
+}
 
-      const nameOverlay = document.createElement("div");
-      nameOverlay.id = `remote_${remoteId}_name`;
-      nameOverlay.className = "nameBox";
-      nameOverlay.innerText = remoteName;
-     
+function renderUsers(users) {
+  const ul = document.getElementById("userList");
+  ul.innerHTML = "";
+  users.forEach(u => {
+    const li = document.createElement("li");
+    li.innerText = u.id === myId ? "You" : u.name;
+    if (u.id !== myId) li.onclick = () => startCall(u.id, u.name);
+    ul.appendChild(li);
+  });
+}
+
+async function startCall(remoteId, remoteName) {
+  if (!localStream) return alert("Start camera first");
+  const pc = createPeerConnection(remoteId, true, remoteName);
+  pcs[remoteId] = pc;
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  socket.send(JSON.stringify({ type: "offer", to: remoteId, from: myId, fromName: myName, sdp: pc.localDescription }));
+}
+
+document.getElementById("startBtn").onclick = startCamera;
+document.getElementById("toggleCamBtn").onclick = () => {
+  const track = localStream.getVideoTracks()[0];
+  track.enabled = !track.enabled;
+};
+document.getElementById("hangupBtn").onclick = () => {
+  Object.values(pcs).forEach(pc => pc.close());
+  pcs = {};
+  if (localStream) localStream.getTracks().forEach(t => t.stop());
+};
