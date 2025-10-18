@@ -39,7 +39,6 @@ wss.on("connection", (ws) => {
     let data;
     try { data = JSON.parse(raw); } catch (e) { return; }
 
-    // set name
     if (data.type === "join") {
       const rec = users.get(id);
       if (rec) {
@@ -48,7 +47,7 @@ wss.on("connection", (ws) => {
       }
     }
 
-    // offer/answer/ice-candidate are relayed to target
+    // relay offer/answer/ice-candidate
     if (data.type === "offer" && data.to && users.has(data.to)) {
       const target = users.get(data.to);
       target.ws.send(JSON.stringify({
@@ -58,38 +57,13 @@ wss.on("connection", (ws) => {
         sdp: data.sdp
       }));
     }
-
     if (data.type === "answer" && data.to && users.has(data.to)) {
       const target = users.get(data.to);
-      target.ws.send(JSON.stringify({
-        type: "answer",
-        from: id,
-        sdp: data.sdp
-      }));
+      target.ws.send(JSON.stringify({ type: "answer", from: id, sdp: data.sdp }));
     }
-
     if (data.type === "ice-candidate" && data.to && users.has(data.to)) {
       const target = users.get(data.to);
-      target.ws.send(JSON.stringify({
-        type: "ice-candidate",
-        from: id,
-        candidate: data.candidate
-      }));
-    }
-
-    // simple call ping (for UI) - optional
-    if (data.type === "call" && data.to && users.has(data.to)) {
-      const target = users.get(data.to);
-      target.ws.send(JSON.stringify({
-        type: "incoming-call",
-        from: id,
-        fromName: users.get(id).name
-      }));
-    }
-
-    // hangup relay
-    if (data.type === "hangup" && data.to && users.has(data.to)) {
-      users.get(data.to).ws.send(JSON.stringify({ type: "hangup", from: id }));
+      target.ws.send(JSON.stringify({ type: "ice-candidate", from: id, candidate: data.candidate }));
     }
   });
 
@@ -99,5 +73,5 @@ wss.on("connection", (ws) => {
   });
 });
 
-const PORT = process.env.PORT || 10000;
+const PORT = 10000;
 server.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
