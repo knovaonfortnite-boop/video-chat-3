@@ -5,21 +5,24 @@ let myId = null;
 let myName = prompt("Enter your name:") || "You";
 let socket = null;
 
-// -------------------- SOCKET --------------------
+// -------------------- SOCKET WITH AUTO-RECONNECT --------------------
 function connectSocket() {
   socket = new WebSocket(`ws://${window.location.hostname}:10000`);
 
   socket.addEventListener("open", () => {
     console.log("✅ WebSocket connected.");
-    if (myId === null) return; // first connection handled in welcome
-    // Rejoin after reconnect
-    socket.send(JSON.stringify({ type: "join", name: myName }));
+    alert("Connected to server!");
+    // Send name after connection is ready
+    if (myId !== null) {
+      socket.send(JSON.stringify({ type: "join", name: myName }));
+    }
   });
 
   socket.addEventListener("message", handleMessage);
 
   socket.addEventListener("close", () => {
     console.warn("⚠️ Disconnected from server! Reconnecting in 2s...");
+    alert("Disconnected from server! Reconnecting...");
     setTimeout(connectSocket, 2000);
   });
 
@@ -28,6 +31,7 @@ function connectSocket() {
   });
 }
 
+// Handle incoming messages
 function handleMessage(ev) {
   const msg = JSON.parse(ev.data);
 
@@ -73,7 +77,9 @@ async function startCamera() {
   videoEl.playsInline = true;
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 300));
+    // Wait for WS + DOM ready, ChromeOS fix
+    await new Promise(resolve => setTimeout(resolve, 400));
+
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     videoEl.srcObject = localStream;
     await videoEl.play();
