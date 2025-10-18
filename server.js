@@ -8,17 +8,14 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Serve static files
 app.use(express.static(path.join(__dirname, "public")));
 
 const users = new Map(); // id -> { ws, name }
 
-// Generate unique ID
 function genId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-// Broadcast online users
 function broadcastUserList() {
   const list = Array.from(users.entries()).map(([id, u]) => ({ id, name: u.name }));
   const msg = JSON.stringify({ type: "user-list", users: list });
@@ -27,7 +24,6 @@ function broadcastUserList() {
   }
 }
 
-// Get LAN IP
 function getLANIP() {
   const interfaces = os.networkInterfaces();
   for (let iface of Object.values(interfaces)) {
@@ -50,16 +46,11 @@ wss.on("connection", (ws) => {
     let data;
     try { data = JSON.parse(raw); } catch (e) { return; }
 
-    // Join: update name
     if (data.type === "join") {
       const rec = users.get(id);
-      if (rec) {
-        rec.name = data.name || rec.name;
-        broadcastUserList();
-      }
+      if (rec) { rec.name = data.name || rec.name; broadcastUserList(); }
     }
 
-    // Offer/Answer/ICE relay
     if (data.type === "offer" && data.to && users.has(data.to)) {
       const target = users.get(data.to);
       target.ws.send(JSON.stringify({ type: "offer", from: id, fromName: users.get(id).name, sdp: data.sdp }));
@@ -76,15 +67,12 @@ wss.on("connection", (ws) => {
     }
   });
 
-  ws.on("close", () => {
-    users.delete(id);
-    broadcastUserList();
-  });
+  ws.on("close", () => { users.delete(id); broadcastUserList(); });
 });
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, '0.0.0.0', () => {
   const ip = getLANIP();
   console.log(`✅ Server running on port ${PORT}`);
-  console.log(`🌐 Connect from other devices via ws://${ip}:${PORT}`);
+  console.log(`🌐 Connect from devices via http://${ip}:${PORT}`);
 });
