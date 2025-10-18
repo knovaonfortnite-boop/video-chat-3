@@ -11,8 +11,6 @@ function connectSocket() {
 
   socket.addEventListener("open", () => {
     console.log("✅ WebSocket connected.");
-    alert("Connected to server!");
-    // Send name after connection is ready
     if (myId !== null) {
       socket.send(JSON.stringify({ type: "join", name: myName }));
     }
@@ -22,13 +20,10 @@ function connectSocket() {
 
   socket.addEventListener("close", () => {
     console.warn("⚠️ Disconnected from server! Reconnecting in 2s...");
-    alert("Disconnected from server! Reconnecting...");
     setTimeout(connectSocket, 2000);
   });
 
-  socket.addEventListener("error", (err) => {
-    console.error("WebSocket error:", err);
-  });
+  socket.addEventListener("error", console.error);
 }
 
 // Handle incoming messages
@@ -77,7 +72,7 @@ async function startCamera() {
   videoEl.playsInline = true;
 
   try {
-    // Wait for WS + DOM ready, ChromeOS fix
+    // Delay to allow Chromebook permissions and WS ready
     await new Promise(resolve => setTimeout(resolve, 400));
 
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
