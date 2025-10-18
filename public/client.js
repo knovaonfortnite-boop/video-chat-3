@@ -4,18 +4,22 @@ let pcs = {};
 let myId = null;
 let myName = prompt("Enter your name:") || "You";
 
-// Replace hostname with your PC's local IP if testing on phone
+// -------------------- SOCKET --------------------
+// Replace hostname with your PC's LAN IP if testing on phone
 // Example: ws://192.168.1.5:10000
 let socket = new WebSocket(`ws://${window.location.hostname}:10000`);
 
-// -------------------- SOCKET --------------------
+socket.addEventListener("open", () => {
+  console.log("WebSocket connected.");
+});
+
 socket.addEventListener("message", async (ev) => {
   const msg = JSON.parse(ev.data);
 
   if (msg.type === "welcome") {
     myId = msg.id;
-    renderUsers(msg.users || []);
     socket.send(JSON.stringify({ type: "join", name: myName }));
+    renderUsers(msg.users || []);
   }
 
   if (msg.type === "user-list") renderUsers(msg.users || []);
@@ -45,12 +49,15 @@ socket.addEventListener("message", async (ev) => {
 // -------------------- CAMERA --------------------
 async function startCamera() {
   const videoEl = document.getElementById("localVideo");
+  if (!videoEl) return alert("Video element not found.");
+
+  // Chromebook fix
   videoEl.muted = true;
   videoEl.autoplay = true;
   videoEl.playsInline = true;
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise(resolve => setTimeout(resolve, 300)); // delay for Chromebook
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     videoEl.srcObject = localStream;
     await videoEl.play();
@@ -59,9 +66,11 @@ async function startCamera() {
     document.getElementById("hangupBtn").disabled = false;
 
     showLocalNameOverlay(myName);
+
+    console.log("✅ Camera started!");
   } catch (err) {
     console.error("Camera error:", err);
-    alert("Camera failed! Make sure no other app is using it.");
+    alert("Camera failed! Make sure no other app is using it and reload the page.");
   }
 }
 
@@ -114,6 +123,12 @@ function createPeerConnection(remoteId, isOffer, remoteName = "Someone") {
       nameOverlay.className = "nameBox";
       nameOverlay.innerText = remoteName;
       nameOverlay.style.display = "none";
+
+      // show overlay if camera is off
+      const track = e.streams[0].getVideoTracks()[0];
+      if (!track.enabled) nameOverlay.style.display = "flex";
+      track.onmute = () => nameOverlay.style.display = "flex";
+      track.onunmute = () => nameOverlay.style.display = "none";
 
       box.appendChild(videoEl);
       box.appendChild(nameOverlay);
