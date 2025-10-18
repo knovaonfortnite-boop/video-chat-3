@@ -5,12 +5,13 @@ let myName = prompt("Enter your name") || "You";
 let socket;
 let reconnectInterval;
 
+// --- WebSocket connection with auto-reconnect ---
 function connectWS() {
   socket = new WebSocket(`ws://${window.location.hostname}:10000`);
 
   socket.onopen = () => {
     console.log("WS connected");
-    clearInterval(reconnectInterval); // stop reconnect attempts
+    clearInterval(reconnectInterval);
     if (myId) socket.send(JSON.stringify({ type: "join", name: myName }));
   };
 
@@ -47,8 +48,8 @@ function connectWS() {
 
   socket.onclose = () => {
     console.log("WS disconnected");
-    alert("⚠️ You got disconnected from the server. Reconnecting...");
-    reconnectInterval = setInterval(connectWS, 3000); // try reconnect every 3 sec
+    alert("⚠️ Disconnected from server. Reconnecting...");
+    reconnectInterval = setInterval(connectWS, 3000);
   };
 
   socket.onerror = (err) => {
@@ -57,7 +58,7 @@ function connectWS() {
   };
 }
 
-// --- Camera functions ---
+// --- Camera ---
 async function startCamera() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -70,13 +71,13 @@ async function startCamera() {
 }
 
 function toggleCamera() {
-  if (!localStream) return;
+  if (!localStream) return alert("Start camera first!");
   const track = localStream.getVideoTracks()[0];
   track.enabled = !track.enabled;
   document.getElementById("toggleCamBtn").innerText = track.enabled ? "Turn Camera Off" : "Turn Camera On";
 }
 
-// --- Peer connection ---
+// --- Peer connections ---
 function createPeerConnection(remoteId, isOffer, remoteName = "Someone") {
   const pc = new RTCPeerConnection();
 
@@ -110,12 +111,11 @@ function createPeerConnection(remoteId, isOffer, remoteName = "Someone") {
   return pc;
 }
 
-// --- Render online users ---
+// --- Online bar ---
 function renderUsers(users) {
   const ul = document.getElementById("userList");
   ul.innerHTML = "";
 
-  // Sort: You first
   users.sort((a, b) => (a.id === myId ? -1 : b.id === myId ? 1 : 0));
 
   users.forEach(u => {
@@ -147,9 +147,11 @@ function hangUp() {
 }
 
 // --- Button events ---
-document.getElementById("startBtn").onclick = startCamera;
-document.getElementById("toggleCamBtn").onclick = toggleCamera;
-document.getElementById("hangupBtn").onclick = hangUp;
+window.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("startBtn").onclick = startCamera;
+  document.getElementById("toggleCamBtn").onclick = toggleCamera;
+  document.getElementById("hangupBtn").onclick = hangUp;
+});
 
-// --- Start WebSocket connection ---
+// --- Start WebSocket ---
 connectWS();
