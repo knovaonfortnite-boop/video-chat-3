@@ -2,7 +2,7 @@
 const WS_URL = `wss://${window.location.host}`; // works on Render domain
 const socket = new WebSocket(WS_URL);
 
-const startBtn = document.getElementById("startBtn");
+const startBtn document.getElementById("startBtn");
 const toggleCamBtn = document.getElementById("toggleCamBtn");
 const hangupBtn = document.getElementById("hangupBtn");
 const localVideo = document.getElementById("localVideo");
