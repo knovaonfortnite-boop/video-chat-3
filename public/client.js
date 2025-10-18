@@ -4,8 +4,8 @@ let myId;
 let myName = prompt("Enter your name") || "You";
 let socket;
 let reconnectInterval;
+let ringingAudio = new Audio("ringtone.mp3"); // put ringtone.mp3 in public folder
 
-// --- WebSocket connection with auto-reconnect ---
 function connectWS() {
   socket = new WebSocket(`ws://${window.location.hostname}:10000`);
 
@@ -27,12 +27,19 @@ function connectWS() {
     if (msg.type === "user-list") renderUsers(msg.users || []);
 
     if (msg.type === "offer") {
+      ringingAudio.play();
+      animateIncomingCall(msg.from);
+
       const pc = createPeerConnection(msg.from, false, msg.fromName);
       pcs[msg.from] = pc;
       await pc.setRemoteDescription(msg.sdp);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       socket.send(JSON.stringify({ type: "answer", to: msg.from, sdp: pc.localDescription }));
+
+      ringingAudio.pause();
+      ringingAudio.currentTime = 0;
+      stopIncomingAnimation(msg.from);
     }
 
     if (msg.type === "answer") {
@@ -58,7 +65,6 @@ function connectWS() {
   };
 }
 
-// --- Camera ---
 async function startCamera() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -77,7 +83,6 @@ function toggleCamera() {
   document.getElementById("toggleCamBtn").innerText = track.enabled ? "Turn Camera Off" : "Turn Camera On";
 }
 
-// --- Peer connections ---
 function createPeerConnection(remoteId, isOffer, remoteName = "Someone") {
   const pc = new RTCPeerConnection();
 
@@ -104,6 +109,14 @@ function createPeerConnection(remoteId, isOffer, remoteName = "Someone") {
       nameBox.className = "nameBox";
       nameBox.innerText = remoteName;
       box.appendChild(nameBox);
+
+      box.style.opacity = 0;
+      box.style.transform = "scale(0.8)";
+      setTimeout(() => {
+        box.style.transition = "opacity 0.5s, transform 0.5s";
+        box.style.opacity = 1;
+        box.style.transform = "scale(1)";
+      }, 50);
     }
   };
 
@@ -111,47 +124,13 @@ function createPeerConnection(remoteId, isOffer, remoteName = "Someone") {
   return pc;
 }
 
-// --- Online bar ---
 function renderUsers(users) {
   const ul = document.getElementById("userList");
   ul.innerHTML = "";
 
-  users.sort((a, b) => (a.id === myId ? -1 : b.id === myId ? 1 : 0));
+  users.sort((a,b)=>a.id===myId?-1:b.id===myId?1:0);
 
   users.forEach(u => {
     const li = document.createElement("li");
-    li.innerText = u.id === myId ? "You" : u.name;
-    li.style.fontWeight = u.id === myId ? "700" : "400";
-    if (u.id !== myId) li.onclick = () => startCall(u.id, u.name);
-    ul.appendChild(li);
-  });
-}
-
-// --- Call functions ---
-async function startCall(remoteId, remoteName) {
-  if (!localStream) return alert("Start camera first");
-  const pc = createPeerConnection(remoteId, true, remoteName);
-  pcs[remoteId] = pc;
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  socket.send(JSON.stringify({ type: "offer", to: remoteId, from: myId, fromName: myName, sdp: pc.localDescription }));
-}
-
-// --- Hang up ---
-function hangUp() {
-  Object.values(pcs).forEach(pc => pc.close());
-  pcs = {};
-  if (localStream) localStream.getTracks().forEach(t => t.stop());
-  document.getElementById("toggleCamBtn").disabled = true;
-  document.getElementById("hangupBtn").disabled = true;
-}
-
-// --- Button events ---
-window.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("startBtn").onclick = startCamera;
-  document.getElementById("toggleCamBtn").onclick = toggleCamera;
-  document.getElementById("hangupBtn").onclick = hangUp;
-});
-
-// --- Start WebSocket ---
-connectWS();
+    li.innerText = u.id===myId?"You":u.name;
+    li.style.fontWeight = u.id===
