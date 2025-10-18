@@ -14,13 +14,13 @@ async function startCamera() {
     document.getElementById("toggleCamBtn").disabled = false;
     document.getElementById("hangupBtn").disabled = false;
 
-    // make sure label shows even if video stops
-    updateVideoLabel("localBox", myName);
+    // show name overlay
+    showNameOverlay("localBox", myName);
 
-    alert("Camera started!");
+    console.log("Camera started!");
   } catch (err) {
     console.error("Camera error:", err);
-    alert("Unable to access camera. Make sure permissions are allowed.");
+    alert("Unable to access camera. Make sure Chrome has permission to use it.");
   }
 }
 
@@ -31,35 +31,9 @@ function toggleCamera() {
   videoTrack.enabled = !videoTrack.enabled;
   document.getElementById("toggleCamBtn").innerText = videoTrack.enabled ? "Turn Camera Off" : "Turn Camera On";
 
-  // show name overlay if camera is off
-  const boxId = "localBox";
-  const nameOverlay = document.getElementById(`${boxId}_name`);
-  if (videoTrack.enabled) {
-    if (nameOverlay) nameOverlay.style.display = "none";
-  } else {
-    if (!nameOverlay) {
-      const overlay = document.createElement("div");
-      overlay.id = `${boxId}_name`;
-      overlay.className = "nameBox";
-      overlay.innerText = myName;
-      document.getElementById(boxId).appendChild(overlay);
-    } else {
-      nameOverlay.style.display = "flex";
-    }
-  }
-}
-
-// --- UPDATE NAME LABEL FOR ANY VIDEO BOX ---
-function updateVideoLabel(boxId, label) {
-  const box = document.getElementById(boxId);
-  if (!box) return;
-  let overlay = box.querySelector(".labelOverlay");
-  if (!overlay) {
-    overlay = document.createElement("div");
-    overlay.className = "labelOverlay";
-    box.appendChild(overlay);
-  }
-  overlay.innerText = label;
+  // show/hide name overlay
+  const overlay = document.getElementById("localBox_name");
+  if (overlay) overlay.style.display = videoTrack.enabled ? "none" : "flex";
 }
 
 // --- HANG UP ---
@@ -89,14 +63,14 @@ function createPeerConnection(remoteId, isOffer) {
   };
 
   pc.ontrack = e => {
-    let videoEl = document.getElementById(`remote_${remoteId}`);
-    if (!videoEl) {
+    let box = document.getElementById(`remote_${remoteId}`);
+    if (!box) {
       const container = document.getElementById("videoContainer");
-      const box = document.createElement("div");
+      box = document.createElement("div");
       box.className = "videoBox";
       box.id = `remote_${remoteId}`;
 
-      videoEl = document.createElement("video");
+      const videoEl = document.createElement("video");
       videoEl.autoplay = true;
       videoEl.playsInline = true;
       videoEl.srcObject = e.streams[0];
@@ -111,11 +85,27 @@ function createPeerConnection(remoteId, isOffer) {
     }
   };
 
+  // attach local stream
   if (localStream) {
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
   }
 
   return pc;
+}
+
+// --- SHOW NAME OVERLAY ---
+function showNameOverlay(boxId, name) {
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  let overlay = document.getElementById(`${boxId}_name`);
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = `${boxId}_name`;
+    overlay.className = "nameBox";
+    overlay.innerText = name;
+    box.appendChild(overlay);
+  }
+  overlay.style.display = "flex";
 }
 
 // --- BUTTON EVENTS ---
