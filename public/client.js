@@ -5,9 +5,8 @@ let myName = prompt("Enter your name") || "You";
 
 const socket = new WebSocket(`ws://${window.location.hostname}:10000`);
 
-socket.onopen = () => {
-  console.log("Connected to WS");
-};
+// --- WebSocket events ---
+socket.onopen = () => console.log("Connected to WebSocket");
 
 socket.onmessage = async (ev) => {
   const msg = JSON.parse(ev.data);
@@ -40,6 +39,7 @@ socket.onmessage = async (ev) => {
   }
 };
 
+// --- Camera functions ---
 async function startCamera() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -47,39 +47,69 @@ async function startCamera() {
     document.getElementById("toggleCamBtn").disabled = false;
     document.getElementById("hangupBtn").disabled = false;
   } catch (err) {
-    alert("Camera failed. Make sure the page is served via LAN IP and not localhost.");
+    alert("Camera failed. Make sure the page is served via LAN IP and not file:// or localhost.");
   }
 }
 
-function createPeerConnection(remoteId, isOffer, remoteName="Someone") {
+function toggleCamera() {
+  if (!localStream) return;
+  const track = localStream.getVideoTracks()[0];
+  track.enabled = !track.enabled;
+  document.getElementById("toggleCamBtn").innerText = track.enabled ? "Turn Camera Off" : "Turn Camera On";
+}
+
+// --- Peer connection ---
+function createPeerConnection(remoteId, isOffer, remoteName = "Someone") {
   const pc = new RTCPeerConnection();
+
   pc.onicecandidate = e => {
     if (e.candidate) socket.send(JSON.stringify({ type: "ice-candidate", to: remoteId, candidate: e.candidate }));
   };
 
   pc.ontrack = e => {
-    let vid = document.createElement("video");
-    vid.autoplay = true;
-    vid.playsInline = true;
-    vid.srcObject = e.streams[0];
-    document.getElementById("videoContainer").appendChild(vid);
+    const container = document.getElementById("videoContainer");
+    let box = document.getElementById(`remote_${remoteId}`);
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "videoBox";
+      box.id = `remote_${remoteId}`;
+      container.appendChild(box);
+
+      const vid = document.createElement("video");
+      vid.autoplay = true;
+      vid.playsInline = true;
+      vid.srcObject = e.streams[0];
+      box.appendChild(vid);
+
+      const nameBox = document.createElement("div");
+      nameBox.className = "nameBox";
+      nameBox.innerText = remoteName;
+      box.appendChild(nameBox);
+    }
   };
 
   if (localStream) localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
   return pc;
 }
 
+// --- Render online users ---
 function renderUsers(users) {
   const ul = document.getElementById("userList");
   ul.innerHTML = "";
+
+  // Sort: You first
+  users.sort((a, b) => (a.id === myId ? -1 : b.id === myId ? 1 : 0));
+
   users.forEach(u => {
     const li = document.createElement("li");
     li.innerText = u.id === myId ? "You" : u.name;
+    li.style.fontWeight = u.id === myId ? "700" : "400";
     if (u.id !== myId) li.onclick = () => startCall(u.id, u.name);
     ul.appendChild(li);
   });
 }
 
+// --- Call functions ---
 async function startCall(remoteId, remoteName) {
   if (!localStream) return alert("Start camera first");
   const pc = createPeerConnection(remoteId, true, remoteName);
@@ -89,13 +119,16 @@ async function startCall(remoteId, remoteName) {
   socket.send(JSON.stringify({ type: "offer", to: remoteId, from: myId, fromName: myName, sdp: pc.localDescription }));
 }
 
-document.getElementById("startBtn").onclick = startCamera;
-document.getElementById("toggleCamBtn").onclick = () => {
-  const track = localStream.getVideoTracks()[0];
-  track.enabled = !track.enabled;
-};
-document.getElementById("hangupBtn").onclick = () => {
+// --- Hang up ---
+function hangUp() {
   Object.values(pcs).forEach(pc => pc.close());
   pcs = {};
   if (localStream) localStream.getTracks().forEach(t => t.stop());
-};
+  document.getElementById("toggleCamBtn").disabled = true;
+  document.getElementById("hangupBtn").disabled = true;
+}
+
+// --- Button events ---
+document.getElementById("startBtn").onclick = startCamera;
+document.getElementById("toggleCamBtn").onclick = toggleCamera;
+document.getElementById("hangupBtn").onclick = hangUp;
