@@ -3,17 +3,32 @@ let localStream = null;
 let pcs = {};
 let myId = null;
 let myName = prompt("Enter your name:") || "You";
+let socket = null;
 
 // -------------------- SOCKET --------------------
-// Replace hostname with your PC's LAN IP if testing on phone
-// Example: ws://192.168.1.5:10000
-let socket = new WebSocket(`ws://${window.location.hostname}:10000`);
+function connectSocket() {
+  socket = new WebSocket(`ws://${window.location.hostname}:10000`);
 
-socket.addEventListener("open", () => {
-  console.log("WebSocket connected.");
-});
+  socket.addEventListener("open", () => {
+    console.log("✅ WebSocket connected.");
+    if (myId === null) return; // first connection handled in welcome
+    // Rejoin after reconnect
+    socket.send(JSON.stringify({ type: "join", name: myName }));
+  });
 
-socket.addEventListener("message", async (ev) => {
+  socket.addEventListener("message", handleMessage);
+
+  socket.addEventListener("close", () => {
+    console.warn("⚠️ Disconnected from server! Reconnecting in 2s...");
+    setTimeout(connectSocket, 2000);
+  });
+
+  socket.addEventListener("error", (err) => {
+    console.error("WebSocket error:", err);
+  });
+}
+
+function handleMessage(ev) {
   const msg = JSON.parse(ev.data);
 
   if (msg.type === "welcome") {
@@ -27,37 +42,38 @@ socket.addEventListener("message", async (ev) => {
   if (msg.type === "offer") {
     const pc = createPeerConnection(msg.from, false, msg.fromName);
     pcs[msg.from] = pc;
-    await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-
-    socket.send(JSON.stringify({ type: "answer", to: msg.from, sdp: pc.localDescription }));
+    pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)).then(async () => {
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socket.send(JSON.stringify({ type: "answer", to: msg.from, sdp: pc.localDescription }));
+    });
   }
 
   if (msg.type === "answer") {
     const pc = pcs[msg.from];
-    if (pc) await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+    if (pc) pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
   }
 
   if (msg.type === "ice-candidate") {
     const pc = pcs[msg.from];
-    if (pc) await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+    if (pc) pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
   }
-});
+}
+
+// Start initial connection
+connectSocket();
 
 // -------------------- CAMERA --------------------
 async function startCamera() {
   const videoEl = document.getElementById("localVideo");
   if (!videoEl) return alert("Video element not found.");
 
-  // Chromebook fix
   videoEl.muted = true;
   videoEl.autoplay = true;
   videoEl.playsInline = true;
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 300)); // delay for Chromebook
+    await new Promise(resolve => setTimeout(resolve, 300));
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     videoEl.srcObject = localStream;
     await videoEl.play();
@@ -124,7 +140,6 @@ function createPeerConnection(remoteId, isOffer, remoteName = "Someone") {
       nameOverlay.innerText = remoteName;
       nameOverlay.style.display = "none";
 
-      // show overlay if camera is off
       const track = e.streams[0].getVideoTracks()[0];
       if (!track.enabled) nameOverlay.style.display = "flex";
       track.onmute = () => nameOverlay.style.display = "flex";
