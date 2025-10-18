@@ -1,9 +1,49 @@
+// -------------------- GLOBALS --------------------
 let localStream = null;
-let pcs = {};
+let pcs = {}; // peer connections
 let myId = null;
-let myName = "You"; // default name
+let myName = "You"; // default, can be updated
+let socket = new WebSocket(`ws://${window.location.hostname}:${window.location.port}`);
 
-// --- START CAMERA ---
+// -------------------- SOCKET HANDLING --------------------
+socket.addEventListener("open", () => console.log("WebSocket connected"));
+
+socket.addEventListener("message", async (ev) => {
+  const msg = JSON.parse(ev.data);
+
+  if (msg.type === "welcome") {
+    myId = msg.id;
+    renderUsers(msg.users || []);
+  }
+
+  if (msg.type === "user-list") {
+    renderUsers(msg.users || []);
+  }
+
+  if (msg.type === "offer") {
+    const from = msg.from;
+    const pc = createPeerConnection(from, false);
+    pcs[from] = pc;
+    await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+    socket.send(JSON.stringify({ type: "answer", to: from, sdp: pc.localDescription }));
+  }
+
+  if (msg.type === "answer") {
+    const pc = pcs[msg.from];
+    if (pc) await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+  }
+
+  if (msg.type === "ice-candidate") {
+    const pc = pcs[msg.from];
+    if (pc) await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+  }
+});
+
+// -------------------- CAMERA --------------------
 async function startCamera() {
   const videoEl = document.getElementById("localVideo");
   try {
@@ -14,29 +54,27 @@ async function startCamera() {
     document.getElementById("toggleCamBtn").disabled = false;
     document.getElementById("hangupBtn").disabled = false;
 
-    // show name overlay
     showNameOverlay("localBox", myName);
-
     console.log("Camera started!");
   } catch (err) {
     console.error("Camera error:", err);
-    alert("Unable to access camera. Make sure Chrome has permission to use it.");
+    alert("Camera failed! Check permissions and reload the page.");
   }
 }
 
-// --- TOGGLE CAMERA ---
+// -------------------- TOGGLE CAMERA --------------------
 function toggleCamera() {
   if (!localStream) return;
   const videoTrack = localStream.getVideoTracks()[0];
   videoTrack.enabled = !videoTrack.enabled;
+
   document.getElementById("toggleCamBtn").innerText = videoTrack.enabled ? "Turn Camera Off" : "Turn Camera On";
 
-  // show/hide name overlay
   const overlay = document.getElementById("localBox_name");
   if (overlay) overlay.style.display = videoTrack.enabled ? "none" : "flex";
 }
 
-// --- HANG UP ---
+// -------------------- HANG UP --------------------
 function hangUp() {
   for (let id in pcs) {
     pcs[id].close();
@@ -52,7 +90,7 @@ function hangUp() {
   document.getElementById("hangupBtn").disabled = true;
 }
 
-// --- CREATE PEER CONNECTION ---
+// -------------------- PEER CONNECTION --------------------
 function createPeerConnection(remoteId, isOffer) {
   const pc = new RTCPeerConnection();
 
@@ -86,14 +124,12 @@ function createPeerConnection(remoteId, isOffer) {
   };
 
   // attach local stream
-  if (localStream) {
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-  }
+  if (localStream) localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
   return pc;
 }
 
-// --- SHOW NAME OVERLAY ---
+// -------------------- NAME OVERLAY --------------------
 function showNameOverlay(boxId, name) {
   const box = document.getElementById(boxId);
   if (!box) return;
@@ -108,7 +144,40 @@ function showNameOverlay(boxId, name) {
   overlay.style.display = "flex";
 }
 
-// --- BUTTON EVENTS ---
+// -------------------- BUTTON EVENTS --------------------
 document.getElementById("startBtn").addEventListener("click", startCamera);
 document.getElementById("toggleCamBtn").addEventListener("click", toggleCamera);
 document.getElementById("hangupBtn").addEventListener("click", hangUp);
+
+// -------------------- USER LIST --------------------
+function renderUsers(users) {
+  const ul = document.getElementById("userList");
+  ul.innerHTML = "";
+  users.forEach(u => {
+    if (u.id === myId) return;
+    const li = document.createElement("li");
+    li.innerText = u.name;
+    li.onclick = () => startCall(u.id, u.name);
+    ul.appendChild(li);
+  });
+}
+
+// -------------------- START CALL --------------------
+async function startCall(remoteId, remoteName) {
+  if (!localStream) return alert("Start your camera first.");
+  const pc = createPeerConnection(remoteId, true);
+  pcs[remoteId] = pc;
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  socket.send(JSON.stringify({
+    type: "offer",
+    to: remoteId,
+    from: myId,
+    fromName: myName,
+    sdp: pc.localDescription
+  }));
+
+  alert(`Calling ${remoteName}...`);
+}
