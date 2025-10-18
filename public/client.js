@@ -45,26 +45,35 @@ socket.addEventListener("message", async (ev) => {
 // -------------------- CAMERA --------------------
 async function startCamera() {
   const videoEl = document.getElementById("localVideo");
+  if (!videoEl) return alert("Video element not found.");
+
   try {
+    // Slight delay to ensure Chromebook initializes video properly
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     videoEl.srcObject = localStream;
+
+    // Wait until the video element is ready
     await videoEl.play();
 
     document.getElementById("toggleCamBtn").disabled = false;
     document.getElementById("hangupBtn").disabled = false;
 
-    // show name overlay
-    const overlay = document.getElementById("localBox_name");
+    // Show name overlay
+    let overlay = document.getElementById("localBox_name");
     if (!overlay) {
-      const nameBox = document.createElement("div");
-      nameBox.id = "localBox_name";
-      nameBox.className = "nameBox";
-      nameBox.innerText = myName;
-      document.getElementById("localBox").appendChild(nameBox);
+      overlay = document.createElement("div");
+      overlay.id = "localBox_name";
+      overlay.className = "nameBox";
+      overlay.innerText = myName || "You";
+      document.getElementById("localBox").appendChild(overlay);
     }
+
+    console.log("Camera started successfully on Chromebook!");
   } catch (err) {
     console.error("Camera error:", err);
-    alert("Camera failed! Check permissions and reload.");
+    alert("Camera failed! Reload the page and make sure no other app is using it.");
   }
 }
 
