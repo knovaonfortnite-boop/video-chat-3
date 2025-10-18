@@ -1,5 +1,5 @@
 {
-  "name": "video-chat-chromebook",
+  "name": "video-chat",
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
