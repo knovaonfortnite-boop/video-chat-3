@@ -8,9 +8,9 @@ const io = new Server(server, { cors: { origin: '*' } });
 
 app.use(express.static('public'));
 
-let messages = { public: [] }; // { channel: [msgs] } - public and groups
+let messages = {}; // { channel: [msgs] } - groups and DMs
 let users = {};    // { nickname: socket.id }
-let groups = {};   // { groupName: { members: [nicknames], calls: {} } }
+let groups = {};   // { groupName: { members: [nicknames], calls: {}, isDM: bool } }
 let typingUsers = {}; // { channel: Set(nicknames) }
 
 io.on('connection', socket => {
@@ -23,8 +23,6 @@ io.on('connection', socket => {
     }
     users[nickname] = socket.id;
     socket.nickname = nickname;
-    // Send current public messages
-    socket.emit('allMessages', { channel: 'public', msgs: messages.public });
     io.emit('userList', Object.keys(users));
     updateGroupList();
   });
@@ -32,13 +30,28 @@ io.on('connection', socket => {
   // Create group
   socket.on('createGroup', groupName => {
     if (!groups[groupName]) {
-      groups[groupName] = { members: [socket.nickname], calls: {} };
+      groups[groupName] = { members: [socket.nickname], calls: {}, isDM: false };
       messages[groupName] = [];
       updateGroupList();
     }
   });
 
-  // Join group
+  // Create DM channel
+  socket.on('createDM', target => {
+    const participants = [socket.nickname, target].sort();
+    const dmChannel = `dm-${participants[0]}-${participants[1]}`; // Unique ID
+    if (!groups[dmChannel]) {
+      groups[dmChannel] = { members: participants, calls: {}, isDM: true };
+      messages[dmChannel] = [];
+    }
+    // Join and switch
+    socket.join(dmChannel);
+    const targetSocketId = users[target];
+    if (targetSocketId) io.to(targetSocketId).join(dmChannel);
+    socket.emit('switchToDM', dmChannel);
+  });
+
+  // Join group (or DM)
   socket.on('joinGroup', groupName => {
     if (groups[groupName] && !groups[groupName].members.includes(socket.nickname)) {
       groups[groupName].members.push(socket.nickname);
@@ -61,26 +74,12 @@ io.on('connection', socket => {
     }
   });
 
-  // Send message (public or group)
+  // Send message (to current channel: group or DM)
   socket.on('sendMessage', ({ channel, text }) => {
     const msg = { user: socket.nickname, text };
-    if (!messages[channel]) messages[channel] = [];
+    if (!messages[channel]) return;
     messages[channel].push(msg);
-    if (channel === 'public') {
-      io.emit('message', { channel, ...msg });
-    } else {
-      io.to(channel).emit('message', { channel, ...msg });
-    }
-  });
-
-  // Private message
-  socket.on('sendPrivate', ({ target, text }) => {
-    const targetSocketId = users[target];
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('privateMessage', { from: socket.nickname, text });
-      // Echo to sender
-      socket.emit('privateMessage', { from: socket.nickname, text, to: target });
-    }
+    io.to(channel).emit('message', { channel, ...msg });
   });
 
   // Typing
@@ -148,19 +147,16 @@ io.on('connection', socket => {
   });
 });
 
-// Helper to broadcast group list
+// Helper to broadcast group list (filter out DMs from list; DMs are hidden)
 function updateGroupList() {
-  io.emit('groupList', Object.keys(groups));
+  const visibleGroups = Object.keys(groups).filter(g => !groups[g].isDM);
+  io.emit('groupList', visibleGroups);
 }
 
 // Broadcast typing
 function broadcastTyping(channel) {
   const typers = typingUsers[channel] ? Array.from(typingUsers[channel]) : [];
-  if (channel === 'public') {
-    io.emit('typingUpdate', { channel, typers });
-  } else {
-    io.to(channel).emit('typingUpdate', { channel, typers });
-  }
+  io.to(channel).emit('typingUpdate', { channel, typers });
 }
 
 server.listen(process.env.PORT || 3000, () => console.log('Server running'));
