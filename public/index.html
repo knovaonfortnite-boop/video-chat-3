@@ -106,6 +106,7 @@
     }
     #video-container {
       display: flex;
+      flex-wrap: wrap;
       justify-content: space-around;
       margin-top: 10px;
     }
@@ -114,6 +115,7 @@
       height: 150px;
       background: black;
       border-radius: 5px;
+      margin: 5px;
     }
     #login {
       position: absolute;
@@ -136,6 +138,44 @@
     #private-section {
       margin-top: 20px;
     }
+    #group-section {
+      margin-top: 20px;
+    }
+    #group-list {
+      margin-top: 10px;
+    }
+    #typing-indicator {
+      padding: 5px;
+      color: #8e9297;
+      font-style: italic;
+    }
+    .user-item {
+      position: relative;
+    }
+    .user-options {
+      display: none;
+      position: absolute;
+      background: #202225;
+      border-radius: 5px;
+      padding: 5px;
+      z-index: 1;
+      left: 100%;
+      top: 0;
+    }
+    .user-item:hover .user-options {
+      display: block;
+    }
+    .user-options button {
+      display: block;
+      background: none;
+      border: none;
+      color: #dcddde;
+      cursor: pointer;
+      padding: 5px;
+    }
+    .user-options button:hover {
+      background: #40444b;
+    }
     /* Scrollbar styling like Discord */
     ::-webkit-scrollbar {
       width: 8px;
@@ -155,13 +195,16 @@
   <div id="app" style="display:none; width: 100%; height: 100%;">
     <div id="sidebar">
       <div id="servers">
-        <h3 style="color: #8e9297;">Servers</h3>
-        <!-- For simplicity, static 'Public' server; expand for real servers -->
+        <h3 style="color: #8e9297;">Servers/Groups</h3>
+        <input id="groupName" placeholder="New group name">
+        <button onclick="createGroup()">Create Group</button>
+        <div id="group-list"></div> <!-- List of groups -->
         <p style="cursor: pointer;" onclick="switchChannel('public')">Public Chat</p>
       </div>
       <div id="channels">
+        <h3 style="color: #8e9297;">Online Users</h3>
+        <div id="users"></div> <!-- Online users with options -->
         <h3 style="color: #8e9297;">DMs / Private</h3>
-        <div id="users"></div> <!-- Online users for DMs -->
         <div id="private-section">
           <input id="target" placeholder="Recipient nickname">
           <input id="privateMessage" placeholder="Type private message">
@@ -172,18 +215,17 @@
 
     <div id="chat">
       <div id="messages"></div>
+      <div id="typing-indicator"></div>
       <div id="input-area">
-        <input id="message" placeholder="Type a message...">
+        <input id="message" placeholder="Type a message..." oninput="handleTyping()">
         <button id="send-btn" onclick="sendMessage()">Send</button>
       </div>
     </div>
 
     <div id="voice-controls">
-      <button onclick="startVoiceCall()">Start Voice/Video Call</button>
-      <div id="video-container">
-        <video id="localVideo" autoplay muted playsinline></video>
-        <video id="remoteVideo" autoplay playsinline></video>
-      </div>
+      <button onclick="startVoiceCall()">Start 1:1 Call</button>
+      <button onclick="startGroupCall()">Start Group Call</button>
+      <div id="video-container"></div>
     </div>
   </div>
 
