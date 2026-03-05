@@ -8,26 +8,22 @@ const io = new Server(server, { cors: { origin: '*' } });
 
 app.use(express.static('public'));
 
-let messages = {}; // { channel: [msgs] } - groups and DMs
-let users = {};    // { nickname: socket.id }
-let groups = {};   // { groupName: { members: [nicknames], calls: {}, isDM: bool } }
-let typingUsers = {}; // { channel: Set(nicknames) }
+let messages = {};
+let users = {};
+let groups = {};
+let typingUsers = {};
 
 io.on('connection', socket => {
   console.log('User connected');
 
-  // Set nickname
   socket.on('setNickname', nickname => {
-    if (Object.keys(users).includes(nickname)) {
-      return socket.emit('error', 'Nickname taken');
-    }
+    if (Object.keys(users).includes(nickname)) return socket.emit('error', 'Nickname taken');
     users[nickname] = socket.id;
     socket.nickname = nickname;
     io.emit('userList', Object.keys(users));
     updateGroupList();
   });
 
-  // Create group
   socket.on('createGroup', groupName => {
     if (!groups[groupName]) {
       groups[groupName] = { members: [socket.nickname], calls: {}, isDM: false };
@@ -36,22 +32,19 @@ io.on('connection', socket => {
     }
   });
 
-  // Create DM channel
   socket.on('createDM', target => {
     const participants = [socket.nickname, target].sort();
-    const dmChannel = `dm-${participants[0]}-${participants[1]}`; // Unique ID
+    const dmChannel = `dm-${participants[0]}-${participants[1]}`;
     if (!groups[dmChannel]) {
       groups[dmChannel] = { members: participants, calls: {}, isDM: true };
       messages[dmChannel] = [];
     }
-    // Join and switch
     socket.join(dmChannel);
     const targetSocketId = users[target];
     if (targetSocketId) io.to(targetSocketId).join(dmChannel);
     socket.emit('switchToDM', dmChannel);
   });
 
-  // Join group (or DM)
   socket.on('joinGroup', groupName => {
     if (groups[groupName] && !groups[groupName].members.includes(socket.nickname)) {
       groups[groupName].members.push(socket.nickname);
@@ -61,7 +54,6 @@ io.on('connection', socket => {
     }
   });
 
-  // Add user to group
   socket.on('addToGroup', ({ target, groupName }) => {
     if (groups[groupName] && !groups[groupName].members.includes(target)) {
       groups[groupName].members.push(target);
@@ -74,7 +66,6 @@ io.on('connection', socket => {
     }
   });
 
-  // Send message (to current channel: group or DM)
   socket.on('sendMessage', ({ channel, text }) => {
     const msg = { user: socket.nickname, text };
     if (!messages[channel]) return;
@@ -82,7 +73,6 @@ io.on('connection', socket => {
     io.to(channel).emit('message', { channel, ...msg });
   });
 
-  // Typing
   socket.on('typing', ({ channel }) => {
     if (!typingUsers[channel]) typingUsers[channel] = new Set();
     typingUsers[channel].add(socket.nickname);
@@ -97,42 +87,13 @@ io.on('connection', socket => {
     }
   });
 
-  // WebRTC signaling for 1:1 and groups
-  socket.on('offer', ({ target, offer, group }) => {
-    if (group) {
-      io.to(group).emit('offer', { from: socket.nickname, offer, group });
-    } else {
-      const targetSocketId = users[target];
-      if (targetSocketId) {
-        io.to(targetSocketId).emit('offer', { from: socket.nickname, offer });
-      }
-    }
-  });
-  socket.on('answer', ({ target, answer, group }) => {
-    if (group) {
-      io.to(group).emit('answer', { from: socket.nickname, answer, group });
-    } else {
-      const targetSocketId = users[target];
-      if (targetSocketId) {
-        io.to(targetSocketId).emit('answer', { from: socket.nickname, answer });
-      }
-    }
-  });
-  socket.on('ice-candidate', ({ target, candidate, group }) => {
-    if (group) {
-      io.to(group).emit('ice-candidate', { from: socket.nickname, candidate, group });
-    } else {
-      const targetSocketId = users[target];
-      if (targetSocketId) {
-        io.to(targetSocketId).emit('ice-candidate', { from: socket.nickname, candidate });
-      }
-    }
-  });
+  // WebRTC signaling
+  socket.on('offer', data => forwardSignal('offer', data));
+  socket.on('answer', data => forwardSignal('answer', data));
+  socket.on('ice-candidate', data => forwardSignal('ice-candidate', data));
 
   socket.on('disconnect', () => {
-    console.log(`${socket.nickname} disconnected`);
     delete users[socket.nickname];
-    // Remove from groups and typing
     for (let group in groups) {
       groups[group].members = groups[group].members.filter(m => m !== socket.nickname);
       if (groups[group].members.length === 0) delete groups[group];
@@ -147,16 +108,23 @@ io.on('connection', socket => {
   });
 });
 
-// Helper to broadcast group list (filter out DMs from list; DMs are hidden)
 function updateGroupList() {
   const visibleGroups = Object.keys(groups).filter(g => !groups[g].isDM);
   io.emit('groupList', visibleGroups);
 }
 
-// Broadcast typing
 function broadcastTyping(channel) {
   const typers = typingUsers[channel] ? Array.from(typingUsers[channel]) : [];
   io.to(channel).emit('typingUpdate', { channel, typers });
 }
 
-server.listen(process.env.PORT || 3000, () => console.log('Server running'));
+function forwardSignal(event, { target, ...data }) {
+  if (target) {
+    const targetSocket = users[target];
+    if (targetSocket) io.to(targetSocket).emit(event, { from: data.from || '', ...data });
+  } else if (data.group) {
+    io.to(data.group).emit(event, data);
+  }
+}
+
+server.listen(process.env.PORT || 3000, () => console.log('Server running on port 3000'));
