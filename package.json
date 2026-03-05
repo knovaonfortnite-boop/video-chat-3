@@ -1,7 +1,6 @@
 {
   "name": "mustang-chat",
   "version": "1.0.0",
-  "description": "Mini Discord clone",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -10,9 +9,6 @@
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "express": "^4.18.2",
-    "jsonwebtoken": "^9.0.0",
-    "mongoose": "^7.5.0",
-    "socket.io": "^4.7.2",
-    "dotenv": "^16.3.1"
+    "socket.io": "^4.7.2"
   }
 }
