@@ -1,78 +1,123 @@
-const express = require("express");
-const http = require("http");
-const WebSocket = require("ws");
-const path = require("path");
-const os = require("os");
+const express = require('express');
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const cors = require('cors');
+const http = require('http');
+const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const io = new Server(server, { cors: { origin: '*' } });
 
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.json());
+app.use(cors());
 
-const users = new Map(); // id -> { ws, name }
+// MongoDB Connection
+mongoose.connect('YOUR_MONGODB_ATLAS_URI', { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log('MongoDB Connected'))
+  .catch(err => console.log(err));
 
-function genId() {
-  return Math.random().toString(36).slice(2, 10);
-}
+// User Schema
+const userSchema = new mongoose.Schema({
+  firstName: String,
+  lastName: String,
+  username: { type: String, unique: true }, // e.g., FirstLast
+  password: String,
+});
+const User = mongoose.model('User', userSchema);
 
-function broadcastUserList() {
-  const list = Array.from(users.entries()).map(([id, u]) => ({ id, name: u.name }));
-  const msg = JSON.stringify({ type: "user-list", users: list });
-  for (const [, u] of users) {
-    if (u.ws.readyState === WebSocket.OPEN) u.ws.send(msg);
+// Channel Schema (for servers/DMs)
+const channelSchema = new mongoose.Schema({
+  name: String,
+  type: { type: String, enum: ['text', 'voice'] }, // Text or voice channel
+  serverId: String, // For servers
+  members: [String], // User IDs for DMs or server members
+  messages: [{ user: String, text: String, timestamp: Date }],
+});
+const Channel = mongoose.model('Channel', channelSchema);
+
+// Server Schema (like Discord guilds)
+const serverSchema = new mongoose.Schema({
+  name: String,
+  owner: String, // User ID
+  channels: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Channel' }],
+  members: [String],
+});
+const Server = mongoose.model('Server', serverSchema);
+
+// Register
+app.post('/register', async (req, res) => {
+  const { firstName, lastName, password } = req.body;
+  const username = `${firstName}${lastName}`.toLowerCase(); // Simple unique username
+  const hashedPw = await bcrypt.hash(password, 10);
+  try {
+    const user = new User({ firstName, lastName, username, password: hashedPw });
+    await user.save();
+    res.status(201).send('User registered');
+  } catch (err) {
+    if (err.code === 11000) return res.status(400).send('Username taken');
+    res.status(500).send('Error');
+  }
+});
+
+// Login
+app.post('/login', async (req, res) => {
+  const { firstName, lastName, password } = req.body;
+  const username = `${firstName}${lastName}`.toLowerCase();
+  const user = await User.findOne({ username });
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    return res.status(400).send('Invalid credentials');
+  }
+  const token = jwt.sign({ id: user._id }, 'secret_key'); // Use env var in prod
+  res.json({ token, userId: user._id });
+});
+
+// Create Server (example endpoint)
+app.post('/servers', authenticate, async (req, res) => {
+  const { name } = req.body;
+  const server = new Server({ name, owner: req.userId, members: [req.userId] });
+  await server.save();
+  res.json(server);
+});
+
+// More endpoints: Get servers, create channels, etc. (add as needed)
+
+// Auth Middleware
+function authenticate(req, res, next) {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).send('Unauthorized');
+  try {
+    const decoded = jwt.verify(token, 'secret_key');
+    req.userId = decoded.id;
+    next();
+  } catch {
+    res.status(401).send('Invalid token');
   }
 }
 
-function getLANIP() {
-  const interfaces = os.networkInterfaces();
-  for (let iface of Object.values(interfaces)) {
-    for (let i of iface) {
-      if (i.family === "IPv4" && !i.internal) return i.address;
-    }
-  }
-  return "localhost";
-}
+// Socket.io for Real-Time
+io.on('connection', socket => {
+  console.log('User connected');
 
-wss.on("connection", (ws) => {
-  const id = genId();
-  users.set(id, { ws, name: `User-${id.slice(0,4)}` });
-
-  const current = Array.from(users.entries()).map(([uid, u]) => ({ id: uid, name: u.name }));
-  ws.send(JSON.stringify({ type: "welcome", id, users: current }));
-  broadcastUserList();
-
-  ws.on("message", (raw) => {
-    let data;
-    try { data = JSON.parse(raw); } catch (e) { return; }
-
-    if (data.type === "join") {
-      const rec = users.get(id);
-      if (rec) { rec.name = data.name || rec.name; broadcastUserList(); }
-    }
-
-    if (data.type === "offer" && data.to && users.has(data.to)) {
-      const target = users.get(data.to);
-      target.ws.send(JSON.stringify({ type: "offer", from: id, fromName: users.get(id).name, sdp: data.sdp }));
-    }
-
-    if (data.type === "answer" && data.to && users.has(data.to)) {
-      const target = users.get(data.to);
-      target.ws.send(JSON.stringify({ type: "answer", from: id, sdp: data.sdp }));
-    }
-
-    if (data.type === "ice-candidate" && data.to && users.has(data.to)) {
-      const target = users.get(data.to);
-      target.ws.send(JSON.stringify({ type: "ice-candidate", from: id, candidate: data.candidate }));
-    }
+  socket.on('joinChannel', channelId => {
+    socket.join(channelId);
   });
 
-  ws.on("close", () => { users.delete(id); broadcastUserList(); });
+  socket.on('sendMessage', async ({ channelId, userId, text }) => {
+    const channel = await Channel.findById(channelId);
+    channel.messages.push({ user: userId, text, timestamp: new Date() });
+    await channel.save();
+    io.to(channelId).emit('message', { userId, text });
+  });
+
+  // WebRTC Signaling for Voice/Video
+  socket.on('offer', data => socket.to(data.channelId).emit('offer', data));
+  socket.on('answer', data => socket.to(data.channelId).emit('answer', data));
+  socket.on('ice-candidate', data => socket.to(data.channelId).emit('ice-candidate', data));
+
+  socket.on('disconnect', () => console.log('User disconnected'));
 });
 
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, '0.0.0.0', () => {
-  const ip = getLANIP();
-  console.log(`✅ Server running on port ${PORT}`);
-  console.log(`🌐 Connect from devices via http://${ip}:${PORT}`);
-});
+server.listen(3000, () => console.log('Server running on 3000'));
+
