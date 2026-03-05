@@ -6,32 +6,33 @@
     body { display: flex; font-family: Arial; }
     #sidebar { width: 200px; background: #36393f; color: white; padding: 10px; }
     #chat { flex: 1; padding: 10px; }
-    #messages { height: 300px; overflow-y: scroll; border: 1px solid #ccc; margin-bottom: 5px; padding:5px; }
-    input { padding: 5px; margin: 2px; }
-    button { padding: 5px; margin: 2px; }
+    #messages { height: 300px; overflow-y: scroll; border: 1px solid #ccc; padding: 5px; margin-bottom: 10px; }
+    input, button { margin: 3px 0; width: 100%; }
   </style>
 </head>
 <body>
   <div id="login">
-    <input id="first" placeholder="First Name">
-    <input id="last" placeholder="Last Name">
-    <input id="pw" type="password" placeholder="Password">
-    <button onclick="register()">Register</button>
-    <button onclick="login()">Login</button>
+    <input id="nickname" placeholder="Enter nickname">
+    <button onclick="setNickname()">Join Chat</button>
   </div>
+
   <div id="app" style="display:none;">
     <div id="sidebar">
-      <h3>Channels</h3>
-      <div id="channels">
-        <button onclick="joinChannel('general')">#general</button>
-      </div>
+      <h3>Public Chat</h3>
+      <input id="message" placeholder="Type message">
+      <button onclick="sendMessage()">Send Public</button>
+
+      <h3>Private Message</h3>
+      <input id="target" placeholder="Recipient nickname">
+      <input id="privateMessage" placeholder="Type private message">
+      <button onclick="sendPrivate()">Send Private</button>
     </div>
+
     <div id="chat">
       <div id="messages"></div>
-      <input id="message" placeholder="Type message">
-      <button onclick="sendMessage()">Send</button>
     </div>
   </div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="app.js"></script>
 </body>
