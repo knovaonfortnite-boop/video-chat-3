@@ -4,9 +4,11 @@
   <title>Mustang Chat</title>
   <style>
     body { display: flex; font-family: Arial; }
-    #sidebar { width: 200px; background: #36393f; color: white; }
-    #chat { flex: 1; }
-    #messages { height: 300px; overflow-y: scroll; }
+    #sidebar { width: 200px; background: #36393f; color: white; padding: 10px; }
+    #chat { flex: 1; padding: 10px; }
+    #messages { height: 300px; overflow-y: scroll; border: 1px solid #ccc; margin-bottom: 5px; padding:5px; }
+    input { padding: 5px; margin: 2px; }
+    button { padding: 5px; margin: 2px; }
   </style>
 </head>
 <body>
@@ -19,19 +21,15 @@
   </div>
   <div id="app" style="display:none;">
     <div id="sidebar">
-      <h3>Servers</h3>
-      <div id="servers"></div>
-      <h3>DMs</h3>
-      <div id="dms"></div>
+      <h3>Channels</h3>
+      <div id="channels">
+        <button onclick="joinChannel('general')">#general</button>
+      </div>
     </div>
     <div id="chat">
       <div id="messages"></div>
-      <div id="typing" style="height:20px;font-size:12px;color:gray;"></div>
       <input id="message" placeholder="Type message">
       <button onclick="sendMessage()">Send</button>
-      <button onclick="startVoice()">Join Voice</button>
-      <video id="localVideo" autoplay muted></video>
-      <video id="remoteVideo" autoplay></video>
     </div>
   </div>
   <script src="/socket.io/socket.io.js"></script>
