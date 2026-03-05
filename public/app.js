@@ -1,16 +1,11 @@
-// =====================
-// Mustang Chat Client JS
-// =====================
-const socket = io(); // Uses same origin
+const socket = io();
 let nickname = '';
 let currentChannel = null;
-let peerConnections = {}; // { nickname: RTCPeerConnection } for calls
+let peerConnections = {};
 let localStream = null;
 let typingTimeout = null;
 
-// ---------------------
-// Set Nickname / Join
-// ---------------------
+// ======= Nickname =======
 function setNickname() {
   nickname = document.getElementById('nickname').value.trim();
   if (!nickname) return alert('Enter a nickname');
@@ -19,15 +14,13 @@ function setNickname() {
   document.getElementById('app').style.display = 'flex';
 }
 
-// ---------------------
-// Group Management
-// ---------------------
+// ======= Groups =======
 function createGroup() {
   const groupName = document.getElementById('groupName').value.trim();
   if (!groupName) return;
   socket.emit('createGroup', groupName);
   document.getElementById('groupName').value = '';
-  joinGroup(groupName); // Auto-join creator
+  joinGroup(groupName);
 }
 
 function joinGroup(groupName) {
@@ -37,22 +30,19 @@ function joinGroup(groupName) {
 
 function addToGroup(target) {
   const groupName = prompt(`Enter group name to add ${target} to:`);
-  if (groupName) socket.emit('addToGroup', { target, groupName });
+  if (groupName) {
+    socket.emit('addToGroup', { target, groupName });
+  }
 }
 
-// ---------------------
-// Direct Messages
-// ---------------------
+// ======= DMs =======
 function startDM(target) {
-  if (target === nickname) return;
   socket.emit('createDM', target);
 }
 
-// ---------------------
-// Sending & Typing
-// ---------------------
+// ======= Messages =======
 function sendMessage() {
-  if (!currentChannel) return alert('Join a group or start a DM first');
+  if (!currentChannel) return alert('Join a group or DM first');
   const text = document.getElementById('message').value.trim();
   if (!text) return;
   socket.emit('sendMessage', { channel: currentChannel, text });
@@ -69,77 +59,13 @@ function handleTyping() {
   }, 3000);
 }
 
-// ---------------------
-// Channel Switching
-// ---------------------
-function switchChannel(channel) {
-  currentChannel = channel;
-  const messagesDiv = document.getElementById('messages');
-  messagesDiv.innerHTML = '';
-  
-  // Update input placeholder
-  if (channel.startsWith('dm-')) {
-    const otherUser = channel.split('-').filter(n => n !== 'dm' && n !== nickname)[0];
-    document.getElementById('message').placeholder = `Message ${otherUser}...`;
-  } else {
-    document.getElementById('message').placeholder = `Message #${channel}...`;
-  }
-
-  // Request messages from server
-  socket.emit('allMessages', { channel });
-}
-
-// ---------------------
-// Display Messages
-// ---------------------
-function displayMessages(msgs, isPrivate = false) {
-  const container = document.getElementById('messages');
-  container.innerHTML = '';
-  msgs.forEach(m => addMessage(m.user, m.text, isPrivate));
-  container.scrollTop = container.scrollHeight;
-}
-
-function addMessage(user, text, isPrivate = false) {
-  const container = document.getElementById('messages');
-  const msgDiv = document.createElement('div');
-  msgDiv.className = 'message';
-
-  const pfp = document.createElement('div');
-  pfp.className = 'pfp';
-  pfp.textContent = user.charAt(0).toUpperCase();
-
-  const content = document.createElement('div');
-  content.className = 'message-content';
-
-  const userSpan = document.createElement('span');
-  userSpan.className = 'message-user';
-  userSpan.textContent = user + (isPrivate ? ' (DM)' : '');
-
-  const textP = document.createElement('p');
-  textP.textContent = text;
-  if (isPrivate) textP.style.color = '#faa61a';
-
-  content.appendChild(userSpan);
-  content.appendChild(textP);
-  msgDiv.appendChild(pfp);
-  msgDiv.appendChild(content);
-
-  container.appendChild(msgDiv);
-  container.scrollTop = container.scrollHeight;
-}
-
-// ---------------------
-// Socket Events
-// ---------------------
+// ======= Socket Listeners =======
 socket.on('allMessages', ({ channel, msgs }) => {
-  if (channel === currentChannel) {
-    const isPrivate = channel.startsWith('dm-');
-    displayMessages(msgs, isPrivate);
-  }
+  if (channel === currentChannel) displayMessages(msgs);
 });
 
 socket.on('message', ({ channel, user, text }) => {
-  if (channel === currentChannel) addMessage(user, text, channel.startsWith('dm-'));
+  if (channel === currentChannel) addMessage(user, text);
 });
 
 socket.on('typingUpdate', ({ channel, typers }) => {
@@ -151,40 +77,39 @@ socket.on('typingUpdate', ({ channel, typers }) => {
   }
 });
 
-// ---------------------
-// Users & Groups
-// ---------------------
+// ======= Users List =======
 socket.on('userList', userList => {
   const container = document.getElementById('users');
   container.innerHTML = '';
   userList.forEach(u => {
-    if (u === nickname) return;
-
-    const itemDiv = document.createElement('div');
-    itemDiv.className = 'user-item';
-
-    const dot = document.createElement('div');
-    dot.className = 'online-dot';
-
-    const p = document.createElement('p');
-    p.className = 'user-name';
-    p.textContent = u;
-    p.onclick = () => startDM(u);
-
-    const optionsDiv = document.createElement('div');
-    optionsDiv.className = 'user-options';
-    optionsDiv.innerHTML = `
-      <button onclick="startVoiceCallWith('${u}')">Call</button>
-      <button onclick="addToGroup('${u}')">Add to Group</button>
-    `;
-
-    itemDiv.appendChild(dot);
-    itemDiv.appendChild(p);
-    itemDiv.appendChild(optionsDiv);
-    container.appendChild(itemDiv);
+    if (u !== nickname) {
+      const itemDiv = document.createElement('div');
+      itemDiv.className = 'user-item';
+      
+      const dot = document.createElement('div');
+      dot.className = 'online-dot';
+      
+      const nameP = document.createElement('p');
+      nameP.className = 'user-name';
+      nameP.textContent = u;
+      nameP.onclick = () => startDM(u); // click to DM
+      
+      const optionsDiv = document.createElement('div');
+      optionsDiv.className = 'user-options';
+      optionsDiv.innerHTML = `
+        <button onclick="startVoiceCallWith('${u}')">Call</button>
+        <button onclick="addToGroup('${u}')">Add to Group</button>
+      `;
+      
+      itemDiv.appendChild(dot);
+      itemDiv.appendChild(nameP);
+      itemDiv.appendChild(optionsDiv);
+      container.appendChild(itemDiv);
+    }
   });
 });
 
+// ======= Group List =======
 socket.on('groupList', groupList => {
   const container = document.getElementById('group-list');
   container.innerHTML = '';
@@ -206,16 +131,57 @@ socket.on('switchToDM', dmChannel => {
   switchChannel(dmChannel);
 });
 
-// ---------------------
-// Voice / Video Calls
-// ---------------------
+// ======= Display Messages =======
+function displayMessages(msgs) {
+  const container = document.getElementById('messages');
+  container.innerHTML = '';
+  msgs.forEach(m => addMessage(m.user, m.text));
+}
+
+function addMessage(user, text) {
+  const container = document.getElementById('messages');
+  const msgDiv = document.createElement('div');
+  msgDiv.className = 'message';
+  
+  const pfp = document.createElement('div');
+  pfp.className = 'pfp';
+  pfp.textContent = user.charAt(0).toUpperCase();
+  
+  const content = document.createElement('div');
+  content.className = 'message-content';
+  const userSpan = document.createElement('span');
+  userSpan.className = 'message-user';
+  userSpan.textContent = user;
+  const textP = document.createElement('p');
+  textP.textContent = text;
+  
+  content.appendChild(userSpan);
+  content.appendChild(textP);
+  msgDiv.appendChild(pfp);
+  msgDiv.appendChild(content);
+  container.appendChild(msgDiv);
+  container.scrollTop = container.scrollHeight;
+}
+
+// ======= Switch Channel =======
+function switchChannel(channel) {
+  currentChannel = channel;
+  socket.emit('allMessages', { channel });
+  document.getElementById('messages').innerHTML = '';
+}
+
+// ======= Voice/Video =======
+async function startVoiceCallWith(target) {
+  startVoiceCall(target);
+}
+
 async function startVoiceCall(targetParam = null) {
-  const target = targetParam || prompt('Enter target nickname for 1:1 call:');
+  const target = targetParam || prompt('Enter nickname for 1:1 call:');
   if (!target) return;
 
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-    addVideoStream(nickname, localStream);
+    addVideoStream(nickname, localStream, true);
 
     const pc = new RTCPeerConnection();
     peerConnections[target] = pc;
@@ -223,58 +189,52 @@ async function startVoiceCall(targetParam = null) {
 
     pc.ontrack = event => addVideoStream(target, event.streams[0]);
     pc.onicecandidate = event => {
-      if (event.candidate) socket.emit('ice-candidate', { target, candidate: event.candidate });
+      if (event.candidate) {
+        socket.emit('ice-candidate', { target, candidate: event.candidate });
+      }
     };
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     socket.emit('offer', { target, offer });
+
+    // Add Hang Up button
+    addHangUpButton(target);
   } catch (err) {
     alert('Error starting call: ' + err.message);
   }
 }
 
-function startVoiceCallWith(target) {
-  startVoiceCall(target);
-}
-
-async function startGroupCall() {
-  if (!currentChannel) return alert('Join a group first');
-  const group = currentChannel;
-
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-    addVideoStream(nickname, localStream);
-
-    Object.keys(users).forEach(async target => {
-      if (target === nickname) return;
-
-      const pc = new RTCPeerConnection();
-      peerConnections[target] = pc;
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-      pc.ontrack = event => addVideoStream(target, event.streams[0]);
-      pc.onicecandidate = event => {
-        if (event.candidate) socket.emit('ice-candidate', { target, candidate: event.candidate, group });
-      };
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      socket.emit('offer', { target, offer, group });
-    });
-  } catch (err) {
-    alert('Error starting group call: ' + err.message);
+function addHangUpButton(target) {
+  if (!document.getElementById('hangup-btn')) {
+    const btn = document.createElement('button');
+    btn.id = 'hangup-btn';
+    btn.textContent = 'Hang Up';
+    btn.onclick = () => hangUpCall(target);
+    document.getElementById('voice-controls').appendChild(btn);
   }
 }
 
-// ---------------------
-// WebRTC Signals
-// ---------------------
-socket.on('offer', async ({ from, offer, group }) => {
-  if (confirm(`${from} is calling${group ? ' in group' : ''}. Accept?`)) {
+function hangUpCall(target) {
+  const pc = peerConnections[target];
+  if (pc) pc.close();
+  delete peerConnections[target];
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+    localStream = null;
+  }
+  const video = document.getElementById(`video-${target}`);
+  if (video) video.remove();
+  const btn = document.getElementById('hangup-btn');
+  if (btn) btn.remove();
+}
+
+// ======= WebRTC Handlers =======
+socket.on('offer', async ({ from, offer }) => {
+  if (confirm(`${from} is calling. Accept?`)) {
     if (!localStream) {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-      addVideoStream(nickname, localStream);
+      addVideoStream(nickname, localStream, true);
     }
 
     const pc = new RTCPeerConnection();
@@ -283,30 +243,33 @@ socket.on('offer', async ({ from, offer, group }) => {
 
     pc.ontrack = event => addVideoStream(from, event.streams[0]);
     pc.onicecandidate = event => {
-      if (event.candidate) socket.emit('ice-candidate', { target: from, candidate: event.candidate, group });
+      if (event.candidate) socket.emit('ice-candidate', { target: from, candidate: event.candidate });
     };
 
     await pc.setRemoteDescription(offer);
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    socket.emit('answer', { target: from, answer, group });
+    socket.emit('answer', { target: from, answer });
+
+    addHangUpButton(from);
   }
 });
 
-socket.on('answer', async ({ from, answer, group }) => {
+socket.on('answer', async ({ from, answer }) => {
   const pc = peerConnections[from];
   if (pc) await pc.setRemoteDescription(answer);
 });
 
-socket.on('ice-candidate', async ({ from, candidate, group }) => {
+socket.on('ice-candidate', async ({ from, candidate }) => {
   const pc = peerConnections[from];
-  if (pc) await pc.addIceCandidate(candidate).catch(err => console.error(err));
+  if (pc) {
+    try { await pc.addIceCandidate(candidate); } 
+    catch(e) { console.error(e); }
+  }
 });
 
-// ---------------------
-// Video Streams
-// ---------------------
-function addVideoStream(user, stream) {
+// ======= Video =======
+function addVideoStream(user, stream, flip = false) {
   const container = document.getElementById('video-container');
   let video = document.getElementById(`video-${user}`);
   if (!video) {
@@ -315,11 +278,10 @@ function addVideoStream(user, stream) {
     video.autoplay = true;
     video.playsInline = true;
     video.muted = (user === nickname);
-
+    if (flip) video.style.transform = 'scaleX(-1)'; // mirror
     const label = document.createElement('div');
     label.textContent = user;
     label.style.color = 'white';
-
     container.appendChild(video);
     container.appendChild(label);
   }
