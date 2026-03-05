@@ -135,9 +135,6 @@
       border-radius: 5px;
       border: none;
     }
-    #private-section {
-      margin-top: 20px;
-    }
     #group-section {
       margin-top: 20px;
     }
@@ -209,7 +206,7 @@
   <div id="app" style="display:none; width: 100%; height: 100%;">
     <div id="sidebar">
       <div id="servers">
-        <h3 style="color: #8e9297;">Servers/Groups</h3>
+        <h3 style="color: #8e9297;">Groups</h3>
         <input id="groupName" placeholder="New group name">
         <button onclick="createGroup()">Create Group</button>
         <div id="group-list"></div> <!-- List of groups -->
@@ -217,12 +214,6 @@
       <div id="channels">
         <h3 style="color: #8e9297;">Online Users</h3>
         <div id="users"></div> <!-- Online users with options -->
-        <h3 style="color: #8e9297;">DMs / Private</h3>
-        <div id="private-section">
-          <input id="target" placeholder="Recipient nickname">
-          <input id="privateMessage" placeholder="Type private message">
-          <button onclick="sendPrivate()">Send Private</button>
-        </div>
       </div>
     </div>
 
