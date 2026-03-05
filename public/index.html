@@ -74,7 +74,7 @@
       border: 1px solid #202225;
       color: #dcddde;
       padding: 10px;
-      border-radius: 5px;
+      border-radius: 20px; /* Rounded text box */
     }
     #send-btn {
       background: #7289da;
@@ -151,6 +151,20 @@
     }
     .user-item {
       position: relative;
+      display: flex;
+      align-items: center;
+      font-size: 14px; /* Adjusted size for user list */
+      margin-bottom: 5px;
+    }
+    .online-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #43b581; /* Green online dot */
+      margin-right: 8px;
+    }
+    .user-name {
+      cursor: pointer;
     }
     .user-options {
       display: none;
@@ -199,7 +213,6 @@
         <input id="groupName" placeholder="New group name">
         <button onclick="createGroup()">Create Group</button>
         <div id="group-list"></div> <!-- List of groups -->
-        <p style="cursor: pointer;" onclick="switchChannel('public')">Public Chat</p>
       </div>
       <div id="channels">
         <h3 style="color: #8e9297;">Online Users</h3>
