@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>MyDiscord</title>
+  <title>Mustang Chat</title>
   <style>
     body { display: flex; font-family: Arial; }
     #sidebar { width: 200px; background: #36393f; color: white; }
@@ -26,6 +26,7 @@
     </div>
     <div id="chat">
       <div id="messages"></div>
+      <div id="typing" style="height:20px;font-size:12px;color:gray;"></div>
       <input id="message" placeholder="Type message">
       <button onclick="sendMessage()">Send</button>
       <button onclick="startVoice()">Join Voice</button>
@@ -33,7 +34,7 @@
       <video id="remoteVideo" autoplay></video>
     </div>
   </div>
-  <script src="/socket.io/socket.io.js"></script> <!-- When deployed -->
+  <script src="/socket.io/socket.io.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
